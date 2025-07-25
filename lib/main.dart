@@ -1049,7 +1049,7 @@ class _SpotState extends State<Spot> {
                   child: Stack(
                     children: [
                       Center(
-                        child: Stack(//appstack
+                        child: Stack(//appstack2
                           children: [
                             Visibility(
                               visible: connected,
