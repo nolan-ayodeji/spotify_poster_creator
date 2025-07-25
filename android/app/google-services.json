@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "722386718485",
+    "project_id": "postercreate-469fc",
+    "storage_bucket": "postercreate-469fc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:722386718485:android:2ef26a0e2bbfcf1053231c",
+        "android_client_info": {
+          "package_name": "com.example.spotify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHb7dPHdVLTBYepivxgQUr8hNp2gDRQD8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
