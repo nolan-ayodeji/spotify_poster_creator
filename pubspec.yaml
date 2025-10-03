@@ -44,6 +44,9 @@ dependencies:
   flutter_colorpicker: ^1.1.0
   firebase_core: any
   firebase_analytics: any
+  image_picker_web: ^4.0.0
+  cyclop: ^0.7.0
+  auto_size_text: ^3.0.0
 
 
   universal_io: ^2.2.2
@@ -94,11 +97,18 @@ flutter:
     - family: Schyler
       fonts:
         - asset: assets/Sinteca-Bold.otf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
+
     - family: Trajan Pro
       fonts:
         - asset: assets/Sinteca-ExtraBold.otf
+
+    - family: TempBold
+      fonts:
+        - asset: assets/Marsden-Cm-Black.ttf
+
+    - family: TempBoldUltra
+      fonts:
+        - asset: assets/Marsden-Cm-Ultra.ttf
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
   #

@@ -68,6 +68,19 @@
 </div>
 <div class="loader"></div>
 <style>
+
+  input[type="file"] {
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: -9999 !important;
+    display: none !important;
+  }
+
   /* Ensure the body takes the full viewport size */
   body {
     margin: 0;
@@ -78,6 +91,10 @@
     width: 100vw;
     background-color: #e1dace;
     overflow: hidden; /* Avoid scrollbars */
+  }
+
+  input[type="file"] {
+    display: none !important;
   }
 
   .inner img {
