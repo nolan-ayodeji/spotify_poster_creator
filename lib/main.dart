@@ -1409,7 +1409,7 @@ class _SpotState extends State<Spot> {
                                                                               Shadow(
                                                                                 blurRadius: 13.0, // shadow blur
                                                                                 color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                                offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                offset: Offset(2.1, 2.0), // how much shadow will be shown
                                                                               ),
                                                                             ],
                                                                             fontSize: Newtextheight,
