@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart';
+import 'package:admanager_web/admanager_web.dart';
+
 import 'package:flutter/widgets.dart';
 import 'package:cyclop/cyclop.dart';
 import 'package:http/http.dart' as http;
@@ -35,6 +37,8 @@ Future<void> main() async {
   // Makes sure all Flutter widgets are ready before we do async stuff
   WidgetsFlutterBinding.ensureInitialized();
 
+  AdManagerWeb.init();
+
   // Initializes Firebase and links your app to your Firebase project
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -56,11 +60,29 @@ String openingtext = 'Connecting to Spotify API';
 List<String> trackTitles = ["Track 1", "Track 2", "Track 3", "Track 4"];
 List<TextEditingController> trackControllers = [];
 String authtoken = 'Unauthorized';
-String errortext = "Spotify Album Poster Creator v3.6";
+String errortext = "Spotify Album Poster Creator v3.7 ";
 String setView = "Color";
 bool customImage = false;
-bool classicTemp = true;
-bool newTemp = false;
+bool classicTemp = false;
+bool newTemp = true;
+
+bool viewinroon = false;
+
+bool matchPoster = true;
+bool setPoster = true;
+
+double tiltX = 0.0;    // no X tilt
+double tiltY = -0.2;   // same as your original tilt left
+double scale = 0.7;    // default scale
+double offsetX = 0.0;  // no horizontal move yet
+double offsetY = -100;
+double imageX = 0.0;    // X position
+double imageY = -50;    // Y position
+double imageScale = 1.0; // Scale// no vertical move yet// move up/down
+
+     // ← dynamic scale // tilt left       // ← tilt
+
+
 List<Color> postercolors = [
   Color(0xFFF3EDEC),
   Colors.white,
@@ -72,7 +94,7 @@ List<Color> postercolors = [
   Color(0xffc75e57),
   Color(0xffd0ac3f),
 ];
-Color posterColor = Color(0xFFF3EDEC);
+Color posterColor = Color(0xfff3edec);
 Color posterTextColor = Colors.black;
 
 double posterwidth = 1200;
@@ -81,7 +103,7 @@ double textwidth = 350;
 double textheight = 50;
 double Newtextheight = 50;
 double albumsize = 69;
-double posterrows = 1;
+double posterrows = 2;
 double posterspacing = 1;
 bool posterwidthused = false;
 bool textwidthused = false;
@@ -156,7 +178,11 @@ class Spot extends StatefulWidget {
 class _SpotState extends State<Spot> {
   PaletteGenerator? _paletteGenerator;
 
+
+
   Uint8List? _imageBytes;
+
+  bool _isFirstAlbumLoad = true;
 
   Future<void> _pickImage() async {
     Uint8List? bytesFromPicker = await ImagePickerWeb.getImageAsBytes();
@@ -171,6 +197,20 @@ class _SpotState extends State<Spot> {
       setState(() {}); // Automatically get colors after picking
     }
   }
+
+  Uint8List? _backdropBytes; // separate variable for backdrop
+
+  Future<void> _pickBackdropImage() async {
+    // Pick an image from the web
+    Uint8List? bytes = await ImagePickerWeb.getImageAsBytes();
+
+    if (bytes != null) {
+      setState(() {
+        _backdropBytes = bytes; // store in separate variable
+      });
+    }
+  }
+
 
   Color pickerColor = Color(0xff443a49);
   Color currentColor = Color(0xff443a49);
@@ -485,8 +525,7 @@ class _SpotState extends State<Spot> {
         authtoken = response3['authcode']; // Trigger a rebuild
       });
       print("set variable");
-      // getAlbum(
-      //     '5zi7WsKlIiUXv09tbGLKsE');
+      // getAlbum('2LKW0m9cC63QzEI9tJH3ql');
     } else {
       print("autherror");
     }
@@ -526,27 +565,42 @@ class _SpotState extends State<Spot> {
         hasAlbum = true;
       });
 
-      try {
-        final response = await http.post(
-          Uri.parse('https://hybriidbox.pythonanywhere.com/album'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'choice': albumname}),
-        );
+      if (_isFirstAlbumLoad == false) {
+        try {
+          final response = await http.post(
+            Uri.parse('https://hybriidbox.pythonanywhere.com/album'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'choice': albumname}),
+          );
 
-        FirebaseAnalytics.instance.logEvent(
-          name: 'postercreated',
-          parameters: {'album': " $albumname/${_textController.text}"},
-        );
+          FirebaseAnalytics.instance.logEvent(
+            name: 'postercreated',
+            parameters: {'album': " $albumname/${_textController.text}"},
+          );
 
-        if (response.statusCode == 200) {
-          print('logged album name');
-          print(response.body);
-        } else {
-          print('Failed to log choice: ${response.body}');
+          if (newTemp == true) {
+            FirebaseAnalytics.instance.logEvent(
+              name: 'posterNewTemp',
+              parameters: {'album': " $albumname/${_textController.text}"},
+            );
+          }
+          if (newTemp == false) {
+            FirebaseAnalytics.instance.logEvent(
+              name: 'posterOldTemp',
+              parameters: {'album': " $albumname/${_textController.text}"},
+            );
+          }
+
+          if (response.statusCode == 200) {
+            print('logged album name');
+            print(response.body);
+          } else {
+            print('Failed to log choice: ${response.body}');
+          }
+        } catch (e) {
+          print('Error sending choice: $e');
         }
-      } catch (e) {
-        print('Error sending choice: $e');
-      }
+      } else {}
     } else {
       print(response.body);
       print("response was not 200");
@@ -555,10 +609,12 @@ class _SpotState extends State<Spot> {
       });
       Future.delayed(const Duration(milliseconds: 1500), () {
         setState(() {
-          errortext = "Spotify Album Poster Creator v3.6";
+          errortext = "Spotify Album Poster Creator v3.7";
         });
       });
     }
+
+    _isFirstAlbumLoad = false;
   }
 
   bool hoverstatus = false;
@@ -591,6 +647,21 @@ class _SpotState extends State<Spot> {
     print("initState Called");
     error();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAssets());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final screenHeight = MediaQuery.of(context).size.height;
+
+      setState(() {
+        // Start the poster a little below the top
+        double baseOffset = -screenHeight * 0.4;
+
+        // Add a small extra shift down so the poster is fully visible
+        double extraShift = 200; // tweak this value
+
+        offsetY = baseOffset + extraShift;
+      });
+    });
+
+    // getAlbum('2LKW0m9cC63QzEI9tJH3ql');
   }
 
   Future<void> _loadAssets() async {
@@ -602,8 +673,17 @@ class _SpotState extends State<Spot> {
     });
   }
 
+
+
   @override
   Widget build(BuildContext context) {
+
+    final matrix = Matrix4.identity()
+      ..setEntry(3, 2, 0.001)   // perspective depth
+      ..translate(offsetX, offsetY)   // <-- MOVE image
+      ..rotateX(tiltX)                 // <-- X tilt
+      ..rotateY(tiltY)                 // <-- Y tilt
+      ..scale(scale);                  // <-- scale
     if (!_assetsLoaded) {
       return Scaffold(
         backgroundColor: Color(0xFFDADADA),
@@ -683,6 +763,1412 @@ class _SpotState extends State<Spot> {
               color: Color(0xFFF3F3F3),
             ),
           ),
+          //
+          // Container(
+          //   width: double.infinity,
+          //   height: double.infinity,
+          //   decoration: BoxDecoration(
+          //     gradient: RadialGradient(
+          //       center: Alignment.bottomCenter,
+          //       radius: 1.5,
+          //       colors: [
+          //         // THE FIX IS HERE:
+          //         // Start with your color, but make it very transparent
+          //         posterColor.withOpacity(0),
+          //
+          //         // Fade into the main color (which is fully opaque)
+          //         Color(0xFFF3F3F3),
+          //       ],
+          //       stops: [
+          //         0.0,  // Start at 0% (bottom center) with the transparent posterColor
+          //         0.7,  // Finish the fade by 80% of the radius
+          //       ],
+          //       // We don't need the 3rd color/stop if the final color
+          //       // is just the one we're fading to.
+          //     ),
+          //   ),
+          // ),
+
+          Visibility(
+            visible: viewinroon,
+            child: Transform.translate(
+              offset: Offset(imageX, imageY), // use variables
+              child: Transform.scale(
+                scale: imageScale, // use variable for scale
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    image: DecorationImage(
+                      image: _backdropBytes != null
+                          ? MemoryImage(_backdropBytes!) as ImageProvider
+                          : const AssetImage("assets/wall2.jpg"),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+
+
+          Column(
+            //column top
+            children: [
+              Visibility(
+                child: Expanded(
+                  child: Visibility(
+                    visible: viewinroon,
+                    child: Container(
+                      width: double.infinity,
+                      child: viewinroon
+                          ? Transform(
+                              alignment: Alignment.center,
+                              transform: matrix,
+                              child: Center(
+                                child: Center(
+                                  child: FittedBox(
+                                    child: Padding(
+                                        padding: const EdgeInsets.all(50.0),
+                                        child: classicTemp
+                                            ? Screenshot(
+                                                controller:
+                                                    screenshotController,
+                                                child: Container(
+                                                  width: posterwidth,
+                                                  height: posterheight,
+                                                  decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                          width: 15,
+                                                          color:
+                                                              posterTextColor),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color: Colors.black26,
+                                                          spreadRadius: 10,
+                                                          blurRadius: 14,
+                                                          offset: Offset(-10,
+                                                              10), // changes position of shadow
+                                                        ),
+                                                      ],
+                                                      color: posterColor),
+                                                  child: Stack(
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(40.0),
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              height: 1020,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                border:
+                                                                    Border.all(
+                                                                  width:
+                                                                      coverborder
+                                                                          ? 3.1
+                                                                          : 0,
+                                                                  color: coverborder
+                                                                      ? posterTextColor
+                                                                      : Color(
+                                                                          0xF5EDEC),
+                                                                ),
+                                                                boxShadow: [
+                                                                  BoxShadow(
+                                                                    color: !textShadow
+                                                                        ? Color(
+                                                                            0x5F5EDEC)
+                                                                        : Colors
+                                                                            .black26,
+                                                                    spreadRadius:
+                                                                        9,
+                                                                    blurRadius:
+                                                                        18,
+                                                                    offset: Offset(
+                                                                        1,
+                                                                        1), // changes position of shadow
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                              child: _imageBytes ==
+                                                                      null
+                                                                  ? Image
+                                                                      .network(
+                                                                      networkimage,
+                                                                      fit: BoxFit
+                                                                          .cover, // Adjust to fill the container
+                                                                    )
+                                                                  : Image
+                                                                      .memory(
+                                                                      _imageBytes!,
+                                                                      fit: BoxFit
+                                                                          .cover,
+                                                                    ),
+                                                            ),
+                                                            const SizedBox(
+                                                              height: 30,
+                                                            ),
+                                                            Expanded(
+                                                              child: Center(
+                                                                child: Container(
+                                                                    child: Stack(
+                                                                  children: [
+                                                                    // Row(
+                                                                    //   children: [
+                                                                    //     Expanded(
+                                                                    //         child: Container(
+                                                                    //       height: double.infinity,
+                                                                    //       color: Colors.grey,
+                                                                    //       child: ListView.builder(
+                                                                    //           itemCount: 2,
+                                                                    //           itemBuilder:
+                                                                    //               (BuildContext
+                                                                    //                       context,
+                                                                    //                   int index) {
+                                                                    //             return Container(
+                                                                    //               color:
+                                                                    //                   Colors.green,
+                                                                    //               width: 10,
+                                                                    //               height: 20,
+                                                                    //             );
+                                                                    //           }),
+                                                                    //     )),
+                                                                    //     Expanded(
+                                                                    //         child: Container(
+                                                                    //       height: double.infinity,
+                                                                    //       color: Colors.teal,
+                                                                    //     ))
+                                                                    //   ],
+                                                                    // )
+                                                                    Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          8.0),
+                                                                      child:
+                                                                          Wrap(
+                                                                        runSpacing:
+                                                                            7.0,
+                                                                        spacing:
+                                                                            0,
+                                                                        direction:
+                                                                            Axis.vertical,
+                                                                        children: [
+                                                                          for (int i = 0;
+                                                                              i < trackTitles.length;
+                                                                              i++)
+                                                                            Container(
+                                                                              width: textwidth,
+                                                                              height: textheight,
+                                                                              child: FittedBox(
+                                                                                  alignment: Alignment.centerLeft,
+                                                                                  child: Container(
+                                                                                    child: Row(
+                                                                                      children: [
+                                                                                        Text(
+                                                                                          (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                          style: TextStyle(
+                                                                                              fontFamily: 'Schyler',
+                                                                                              shadows: [
+                                                                                                Shadow(
+                                                                                                  blurRadius: 13.0, // shadow blur
+                                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                                  offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                                ),
+                                                                                              ],
+                                                                                              color: posterTextColor),
+                                                                                          // Handles long text
+                                                                                          softWrap: true,
+                                                                                          // Allows wrapping
+                                                                                        ),
+                                                                                      ],
+                                                                                    ),
+                                                                                  )),
+                                                                            ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                    Visibility(
+                                                                      visible:
+                                                                          showsquare,
+                                                                      child:
+                                                                          Row(
+                                                                        children: [
+                                                                          Spacer(),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[0],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[1],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[2],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[3],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                16,
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                    Column(
+                                                                      children: [
+                                                                        Spacer(),
+                                                                        Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              constraints: const BoxConstraints(
+                                                                                maxWidth: 480,
+                                                                              ),
+                                                                              child: Text(
+                                                                                albumname,
+                                                                                textAlign: TextAlign.right,
+                                                                                style: TextStyle(
+                                                                                    fontFamily: 'Trajan Pro',
+                                                                                    shadows: [
+                                                                                      Shadow(
+                                                                                        blurRadius: 20.0, // shadow blur
+                                                                                        color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                        offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                      ),
+                                                                                    ],
+                                                                                    fontSize: albumsize,
+                                                                                    color: posterTextColor),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                        SizedBox(
+                                                                          height:
+                                                                              13,
+                                                                        ),
+                                                                        Transform
+                                                                            .translate(
+                                                                          offset: Offset(
+                                                                              0,
+                                                                              -10),
+                                                                          child:
+                                                                              Row(
+                                                                            children: [
+                                                                              Spacer(),
+                                                                              Container(
+                                                                                width: 300,
+                                                                                height: 60,
+                                                                                child: Align(
+                                                                                  alignment: Alignment.centerRight,
+                                                                                  child: FittedBox(
+                                                                                    child: Text(
+                                                                                      albumartist,
+                                                                                      style: TextStyle(
+                                                                                          fontFamily: 'Schyler',
+                                                                                          shadows: [
+                                                                                            Shadow(
+                                                                                              blurRadius: 10.0, // shadow blur
+                                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                              offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                            ),
+                                                                                          ],
+                                                                                          fontSize: 60,
+                                                                                          color: posterTextColor),
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        Transform
+                                                                            .translate(
+                                                                          offset: Offset(
+                                                                              0,
+                                                                              -10),
+                                                                          child:
+                                                                              Row(
+                                                                            children: [
+                                                                              Spacer(),
+                                                                              Container(
+                                                                                width: 300,
+                                                                                height: 42,
+                                                                                child: Align(
+                                                                                  alignment: Alignment.centerRight,
+                                                                                  child: FittedBox(
+                                                                                    child: Text(
+                                                                                      releaseyear2,
+                                                                                      style: TextStyle(
+                                                                                          fontFamily: 'Schyler',
+                                                                                          shadows: [
+                                                                                            Shadow(
+                                                                                              blurRadius: 15.0, // shadow blur
+                                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                              offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                            ),
+                                                                                          ],
+                                                                                          fontSize: 50,
+                                                                                          color: posterTextColor),
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                      ],
+                                                                    )
+                                                                  ],
+                                                                )),
+                                                              ),
+                                                            )
+                                                          ],
+                                                        ),
+                                                      )
+                                                    ],
+                                                  ),
+                                                ),
+                                              )
+                                            : Screenshot(
+                                                controller:
+                                                    screenshotController,
+                                                child: Container(
+                                                  width: posterwidth,
+                                                  height: posterheight,
+                                                  decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                          width: 15,
+                                                          color: matchPoster
+                                                              ? posterColor
+                                                              : posterTextColor),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color: Colors.black26,
+                                                          spreadRadius: 10,
+                                                          blurRadius: 14,
+                                                          offset: Offset(-10,
+                                                              10), // changes position of shadow
+                                                        ),
+                                                      ],
+                                                      color: Colors.white),
+                                                  child: Stack(
+                                                    children: [
+                                                      Container(
+                                                          width: 1800,
+                                                          height: 1200,
+                                                          child: _imageBytes ==
+                                                                  null
+                                                              ? Image.network(
+                                                                  networkimage,
+                                                                  fit: BoxFit
+                                                                      .cover, // Adjust to fill the container
+                                                                )
+                                                              : Image.memory(
+                                                                  _imageBytes!,
+                                                                  fit: BoxFit
+                                                                      .cover,
+                                                                )),
+                                                      Column(
+                                                        children: [
+                                                          Expanded(
+                                                            flex: 20,
+                                                            child: Container(),
+                                                          ),
+                                                          Expanded(
+                                                            flex: 55,
+                                                            child: Container(
+                                                              width: double
+                                                                  .infinity,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      gradient: LinearGradient(
+                                                                          begin: Alignment
+                                                                              .topCenter,
+                                                                          end: Alignment
+                                                                              .bottomCenter,
+                                                                          colors: [
+                                                                    posterColor
+                                                                        .withOpacity(
+                                                                            0.0),
+                                                                    posterColor
+                                                                        .withOpacity(
+                                                                            1),
+                                                                  ],
+                                                                          stops: [
+                                                                    0.04,
+                                                                    0.5
+                                                                  ])),
+                                                              child: Column(
+                                                                mainAxisSize:
+                                                                    MainAxisSize
+                                                                        .min,
+                                                                children: [
+                                                                  SizedBox(
+                                                                    height: 390,
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            20),
+                                                                    child:
+                                                                        Container(
+                                                                      //ppp
+
+                                                                      width: double
+                                                                          .infinity,
+                                                                      margin: EdgeInsets
+                                                                          .all(
+                                                                              15.0),
+                                                                      height:
+                                                                          200,
+                                                                      alignment:
+                                                                          Alignment
+                                                                              .bottomCenter,
+
+                                                                      child:
+                                                                          AutoSizeText(
+                                                                        albumname
+                                                                            .toUpperCase(),
+                                                                        maxLines:
+                                                                            1,
+                                                                        wrapWords:
+                                                                            false,
+                                                                        minFontSize:
+                                                                            20,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontFamily:
+                                                                              'TempBold',
+                                                                          height:
+                                                                              0.8,
+                                                                          shadows: [
+                                                                            Shadow(
+                                                                              blurRadius: 20.0,
+                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                              offset: Offset(2.0, 10.0),
+                                                                            ),
+                                                                          ],
+                                                                          fontSize:
+                                                                              200,
+                                                                          color:
+                                                                              posterTextColor,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    //posterartist
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            7),
+                                                                    child:
+                                                                        Align(
+                                                                      child:
+                                                                          Text(
+                                                                        "${albumartist.toUpperCase()} - $releaseyear2 ",
+                                                                        style: TextStyle(
+                                                                            fontFamily: 'TempBold',
+                                                                            fontSize: 60,
+                                                                            shadows: [
+                                                                              Shadow(
+                                                                                blurRadius: 20.0, // shadow blur
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                offset: Offset(2.0, 10.0), // how much shadow will be shown
+                                                                              ),
+                                                                            ],
+                                                                            color: posterTextColor),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    //posterline
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            0),
+                                                                    child:
+                                                                        Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          8.0),
+                                                                      child:
+                                                                          Container(
+                                                                        width: double
+                                                                            .infinity,
+                                                                        height:
+                                                                            14,
+                                                                        color:
+                                                                            posterTextColor,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Container(
+                                                                    //moveup
+                                                                    width: double
+                                                                        .infinity,
+                                                                    height: 562,
+
+                                                                    child:
+                                                                        Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          10.0),
+                                                                      child:
+                                                                          ClipRRect(
+                                                                        child:
+                                                                            Wrap(
+                                                                          //posterwrap
+                                                                          runSpacing:
+                                                                              10.0,
+                                                                          spacing:
+                                                                              0,
+                                                                          direction:
+                                                                              Axis.vertical,
+                                                                          children: [
+                                                                            for (int i = 0;
+                                                                                i < trackTitles.length;
+                                                                                i++)
+                                                                              Padding(
+                                                                                padding: const EdgeInsets.all(0.1),
+                                                                                child: Container(
+                                                                                  width: posterwidth / posterrows - 20,
+
+                                                                                  child: Text(
+                                                                                    (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'TempBold',
+                                                                                        height: 1.1,
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 13.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.1, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: Newtextheight,
+                                                                                        color: posterTextColor),
+                                                                                    // Handles long text
+                                                                                    softWrap: true,
+                                                                                    // Allows wrapping
+                                                                                  ),
+                                                                                  // child: FittedBox(
+                                                                                  //     alignment: Alignment.centerLeft,
+                                                                                  //     child: Container(
+                                                                                  //       child:
+                                                                                  //       Row(
+                                                                                  //         children: [
+                                                                                  //           Text(
+                                                                                  //             (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                  //             style: TextStyle(
+                                                                                  //                 fontFamily: 'TempBoldUltra',
+                                                                                  //                 // shadows: [
+                                                                                  //                 //   Shadow(
+                                                                                  //                 //     blurRadius: 13.0, // shadow blur
+                                                                                  //                 //     color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                  //                 //     offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                  //                 //   ),
+                                                                                  //                 // ],
+                                                                                  //                 color: posterTextColor),
+                                                                                  //             // Handles long text
+                                                                                  //             softWrap: true,
+                                                                                  //             // Allows wrapping
+                                                                                  //           ),
+                                                                                  //         ],
+                                                                                  //       ),
+                                                                                  //     )),
+                                                                                ),
+                                                                              ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          )
+                                                        ],
+                                                      )
+                                                    ],
+                                                  ),
+                                                ),
+                                              )),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Center(
+                                child: FittedBox(
+                                  child: Padding(
+                                      padding: const EdgeInsets.all(50.0),
+                                      child: classicTemp
+                                          ? Screenshot(
+                                              controller: screenshotController,
+                                              child: Container(
+                                                width: posterwidth,
+                                                height: posterheight,
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                        width: 5.8,
+                                                        color: posterTextColor),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors.black26,
+                                                        spreadRadius: 7,
+                                                        blurRadius: 14,
+                                                        offset: Offset(0,
+                                                            3), // changes position of shadow
+                                                      ),
+                                                    ],
+                                                    color: posterColor),
+                                                child: Stack(
+                                                  children: [
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              40.0),
+                                                      child: Column(
+                                                        children: [
+                                                          Container(
+                                                            height: 1020,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              border:
+                                                                  Border.all(
+                                                                width:
+                                                                    coverborder
+                                                                        ? 3.1
+                                                                        : 0,
+                                                                color: coverborder
+                                                                    ? posterTextColor
+                                                                    : Color(
+                                                                        0xF5EDEC),
+                                                              ),
+                                                              boxShadow: [
+                                                                BoxShadow(
+                                                                  color: !textShadow
+                                                                      ? Color(
+                                                                          0x5F5EDEC)
+                                                                      : Colors
+                                                                          .black26,
+                                                                  spreadRadius:
+                                                                      9,
+                                                                  blurRadius:
+                                                                      18,
+                                                                  offset: Offset(
+                                                                      1,
+                                                                      1), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            child: _imageBytes ==
+                                                                    null
+                                                                ? Image.network(
+                                                                    networkimage,
+                                                                    fit: BoxFit
+                                                                        .cover, // Adjust to fill the container
+                                                                  )
+                                                                : Image.memory(
+                                                                    _imageBytes!,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 30,
+                                                          ),
+                                                          Expanded(
+                                                            child: Center(
+                                                              child: Container(
+                                                                  child: Stack(
+                                                                children: [
+                                                                  // Row(
+                                                                  //   children: [
+                                                                  //     Expanded(
+                                                                  //         child: Container(
+                                                                  //       height: double.infinity,
+                                                                  //       color: Colors.grey,
+                                                                  //       child: ListView.builder(
+                                                                  //           itemCount: 2,
+                                                                  //           itemBuilder:
+                                                                  //               (BuildContext
+                                                                  //                       context,
+                                                                  //                   int index) {
+                                                                  //             return Container(
+                                                                  //               color:
+                                                                  //                   Colors.green,
+                                                                  //               width: 10,
+                                                                  //               height: 20,
+                                                                  //             );
+                                                                  //           }),
+                                                                  //     )),
+                                                                  //     Expanded(
+                                                                  //         child: Container(
+                                                                  //       height: double.infinity,
+                                                                  //       color: Colors.teal,
+                                                                  //     ))
+                                                                  //   ],
+                                                                  // )
+                                                                  Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                    child: Wrap(
+                                                                      runSpacing:
+                                                                          7.0,
+                                                                      spacing:
+                                                                          0,
+                                                                      direction:
+                                                                          Axis.vertical,
+                                                                      children: [
+                                                                        for (int i =
+                                                                                0;
+                                                                            i < trackTitles.length;
+                                                                            i++)
+                                                                          Container(
+                                                                            width:
+                                                                                textwidth,
+                                                                            height:
+                                                                                textheight,
+                                                                            child: FittedBox(
+                                                                                alignment: Alignment.centerLeft,
+                                                                                child: Container(
+                                                                                  child: Row(
+                                                                                    children: [
+                                                                                      Text(
+                                                                                        (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                        style: TextStyle(
+                                                                                            fontFamily: 'Schyler',
+                                                                                            shadows: [
+                                                                                              Shadow(
+                                                                                                blurRadius: 13.0, // shadow blur
+                                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                                offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                              ),
+                                                                                            ],
+                                                                                            color: posterTextColor),
+                                                                                        // Handles long text
+                                                                                        softWrap: true,
+                                                                                        // Allows wrapping
+                                                                                      ),
+                                                                                    ],
+                                                                                  ),
+                                                                                )),
+                                                                          ),
+                                                                      ],
+                                                                    ),
+                                                                  ),
+                                                                  Visibility(
+                                                                    visible:
+                                                                        showsquare,
+                                                                    child: Row(
+                                                                      children: [
+                                                                        Spacer(),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[0],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[1],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[2],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[3],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              16,
+                                                                        ),
+                                                                      ],
+                                                                    ),
+                                                                  ),
+                                                                  Column(
+                                                                    children: [
+                                                                      Spacer(),
+                                                                      Row(
+                                                                        children: [
+                                                                          Spacer(),
+                                                                          Container(
+                                                                            constraints:
+                                                                                const BoxConstraints(
+                                                                              maxWidth: 480,
+                                                                            ),
+                                                                            child:
+                                                                                Text(
+                                                                              albumname,
+                                                                              textAlign: TextAlign.right,
+                                                                              style: TextStyle(
+                                                                                  fontFamily: 'Trajan Pro',
+                                                                                  shadows: [
+                                                                                    Shadow(
+                                                                                      blurRadius: 20.0, // shadow blur
+                                                                                      color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                      offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                    ),
+                                                                                  ],
+                                                                                  fontSize: albumsize,
+                                                                                  color: posterTextColor),
+                                                                            ),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                      SizedBox(
+                                                                        height:
+                                                                            13,
+                                                                      ),
+                                                                      Transform
+                                                                          .translate(
+                                                                        offset: Offset(
+                                                                            0,
+                                                                            -10),
+                                                                        child:
+                                                                            Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              width: 300,
+                                                                              height: 60,
+                                                                              child: Align(
+                                                                                alignment: Alignment.centerRight,
+                                                                                child: FittedBox(
+                                                                                  child: Text(
+                                                                                    albumartist,
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'Schyler',
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 10.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: 60,
+                                                                                        color: posterTextColor),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                      Transform
+                                                                          .translate(
+                                                                        offset: Offset(
+                                                                            0,
+                                                                            -10),
+                                                                        child:
+                                                                            Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              width: 300,
+                                                                              height: 42,
+                                                                              child: Align(
+                                                                                alignment: Alignment.centerRight,
+                                                                                child: FittedBox(
+                                                                                  child: Text(
+                                                                                    releaseyear2,
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'Schyler',
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 15.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: 50,
+                                                                                        color: posterTextColor),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  )
+                                                                ],
+                                                              )),
+                                                            ),
+                                                          )
+                                                        ],
+                                                      ),
+                                                    )
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : Screenshot(
+                                              controller: screenshotController,
+                                              child: Container(
+                                                width: posterwidth,
+                                                height: posterheight,
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                        width: 8.5,
+                                                        color: matchPoster
+                                                            ? posterColor
+                                                            : posterTextColor),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors.black26,
+                                                        spreadRadius: 7,
+                                                        blurRadius: 10,
+                                                        offset: Offset(0,
+                                                            2), // changes position of shadow
+                                                      ),
+                                                    ],
+                                                    color: Colors.white),
+                                                child: Stack(
+                                                  children: [
+                                                    Container(
+                                                        width: 1800,
+                                                        height: 1200,
+                                                        child:
+                                                            _imageBytes == null
+                                                                ? Image.network(
+                                                                    networkimage,
+                                                                    fit: BoxFit
+                                                                        .cover, // Adjust to fill the container
+                                                                  )
+                                                                : Image.memory(
+                                                                    _imageBytes!,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  )),
+                                                    Column(
+                                                      children: [
+                                                        Expanded(
+                                                          flex: 20,
+                                                          child: Container(),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 55,
+                                                          child: Container(
+                                                            width:
+                                                                double.infinity,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                    gradient: LinearGradient(
+                                                                        begin: Alignment
+                                                                            .topCenter,
+                                                                        end: Alignment
+                                                                            .bottomCenter,
+                                                                        colors: [
+                                                                  posterColor
+                                                                      .withOpacity(
+                                                                          0.0),
+                                                                  posterColor
+                                                                      .withOpacity(
+                                                                          1),
+                                                                ],
+                                                                        stops: [
+                                                                  0.04,
+                                                                  0.5
+                                                                ])),
+                                                            child: Column(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                SizedBox(
+                                                                  height: 390,
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  offset:
+                                                                      Offset(0,
+                                                                          20),
+                                                                  child:
+                                                                      Container(
+                                                                    //ppp
+
+                                                                    width: double
+                                                                        .infinity,
+                                                                    margin: EdgeInsets
+                                                                        .all(
+                                                                            15.0),
+                                                                    height: 200,
+                                                                    alignment:
+                                                                        Alignment
+                                                                            .bottomCenter,
+
+                                                                    child:
+                                                                        AutoSizeText(
+                                                                      albumname
+                                                                          .toUpperCase(),
+                                                                      maxLines:
+                                                                          1,
+                                                                      wrapWords:
+                                                                          false,
+                                                                      minFontSize:
+                                                                          20,
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontFamily:
+                                                                            'TempBold',
+                                                                        height:
+                                                                            0.8,
+                                                                        shadows: [
+                                                                          Shadow(
+                                                                            blurRadius:
+                                                                                20.0,
+                                                                            color: !textShadow
+                                                                                ? Color(0x5F5EDEC)
+                                                                                : Colors.black26,
+                                                                            offset:
+                                                                                Offset(2.0, 10.0),
+                                                                          ),
+                                                                        ],
+                                                                        fontSize:
+                                                                            200,
+                                                                        color:
+                                                                            posterTextColor,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  //posterartist
+                                                                  offset:
+                                                                      Offset(
+                                                                          0, 7),
+                                                                  child: Align(
+                                                                    child: Text(
+                                                                      "${albumartist.toUpperCase()} - $releaseyear2 ",
+                                                                      style: TextStyle(
+                                                                          fontFamily: 'TempBold',
+                                                                          fontSize: 60,
+                                                                          shadows: [
+                                                                            Shadow(
+                                                                              blurRadius: 20.0, // shadow blur
+                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                              offset: Offset(2.0, 10.0), // how much shadow will be shown
+                                                                            ),
+                                                                          ],
+                                                                          color: posterTextColor),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  //posterline
+                                                                  offset:
+                                                                      Offset(
+                                                                          0, 0),
+                                                                  child:
+                                                                      Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                    child:
+                                                                        Container(
+                                                                      width: double
+                                                                          .infinity,
+                                                                      height:
+                                                                          14,
+                                                                      color:
+                                                                          posterTextColor,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Container(
+                                                                  //moveup
+                                                                  width: double
+                                                                      .infinity,
+                                                                  height: 562,
+
+                                                                  child:
+                                                                      Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            10.0),
+                                                                    child:
+                                                                        ClipRRect(
+                                                                      child:
+                                                                          Wrap(
+                                                                        //posterwrap
+                                                                        runSpacing:
+                                                                            10.0,
+                                                                        spacing:
+                                                                            0,
+                                                                        direction:
+                                                                            Axis.vertical,
+                                                                        children: [
+                                                                          for (int i = 0;
+                                                                              i < trackTitles.length;
+                                                                              i++)
+                                                                            Padding(
+                                                                              padding: const EdgeInsets.all(0.1),
+                                                                              child: Container(
+                                                                                width: posterwidth / posterrows - 20,
+
+                                                                                child: Text(
+                                                                                  (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                  style: TextStyle(
+                                                                                      fontFamily: 'TempBold',
+                                                                                      height: 1.1,
+                                                                                      shadows: [
+                                                                                        Shadow(
+                                                                                          blurRadius: 13.0, // shadow blur
+                                                                                          color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                          offset: Offset(2.1, 2.0), // how much shadow will be shown
+                                                                                        ),
+                                                                                      ],
+                                                                                      fontSize: Newtextheight,
+                                                                                      color: posterTextColor),
+                                                                                  // Handles long text
+                                                                                  softWrap: true,
+                                                                                  // Allows wrapping
+                                                                                ),
+                                                                                // child: FittedBox(
+                                                                                //     alignment: Alignment.centerLeft,
+                                                                                //     child: Container(
+                                                                                //       child:
+                                                                                //       Row(
+                                                                                //         children: [
+                                                                                //           Text(
+                                                                                //             (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                //             style: TextStyle(
+                                                                                //                 fontFamily: 'TempBoldUltra',
+                                                                                //                 // shadows: [
+                                                                                //                 //   Shadow(
+                                                                                //                 //     blurRadius: 13.0, // shadow blur
+                                                                                //                 //     color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                //                 //     offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                //                 //   ),
+                                                                                //                 // ],
+                                                                                //                 color: posterTextColor),
+                                                                                //             // Handles long text
+                                                                                //             softWrap: true,
+                                                                                //             // Allows wrapping
+                                                                                //           ),
+                                                                                //         ],
+                                                                                //       ),
+                                                                                //     )),
+                                                                              ),
+                                                                            ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        )
+                                                      ],
+                                                    )
+                                                  ],
+                                                ),
+                                              ),
+                                            )),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
 
           // Center(
           //   child: ListView(
@@ -712,756 +2198,1380 @@ class _SpotState extends State<Spot> {
           //   ),
           // ),
 
-          Column(
-            children: [
-              Container(
-                  width: double.infinity,
-                  height: 300,
-                  child: Visibility(
-                    visible: false,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 10,
-                        ),
-                        Opacity(
-                          opacity: 0.7,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Opacity(
-                                opacity: 1,
-                                child: Container(
-                                  width: 50,
-                                  child: Image.asset(
-                                    'assets/hbappslogo.png',
-                                    fit: BoxFit
-                                        .cover, // Adjust to fill the container
-                                  ),
-                                ),
-                              ),
-                              Center(
-                                child: Text(
-                                  "Album Title Size: ${albumsize + 1}",
-                                  style: TextStyle(
-                                      fontFamily: 'Schyler',
-                                      fontSize: 10,
-                                      color: Colors.black),
-                                  // Handles long text
-                                  softWrap: true,
-
-                                  // Allows wrapping
-                                ),
-                              ),
-                              Center(
-                                child: Text(
-                                  "Song Height: ${textheight}",
-                                  style: TextStyle(
-                                      fontFamily: 'Schyler',
-                                      fontSize: 10,
-                                      color: Colors.black),
-                                  // Handles long text
-                                  softWrap: true,
-
-                                  // Allows wrapping
-                                ),
-                              ),
-                              Center(
-                                child: Text(
-                                  "Song Width: ${textwidth}",
-                                  style: TextStyle(
-                                      fontFamily: 'Schyler',
-                                      fontSize: 10,
-                                      color: Colors.black),
-                                  // Handles long text
-                                  softWrap: true,
-
-                                  // Allows wrapping
-                                ),
-                              )
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Container(),
-                        ),
-                      ],
-                    ),
-                  )),
-            ],
+          Visibility(
+            visible: viewinroon,
+            child: Visibility(
+              visible: visibleSetting,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Color(0xFFF3F3F3),  // solid bottom
+                      Color(0xBAF3F3F3), // stay solid up to halfway
+                      Colors.transparent, // fade out after halfway
+                    ],
+                    stops: [
+                      0.2,  // start solid
+                      0.3,  // start fading
+                      1,  // end fade sooner
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-
           Column(
             children: [
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  child: Center(
-                    child: Center(
-                      child: FittedBox(
-                        child: Padding(
-                            padding: const EdgeInsets.all(50.0),
-                            child: classicTemp
-                                ? Screenshot(
-                                    controller: screenshotController,
-                                    child: Container(
-                                      width: posterwidth,
-                                      height: posterheight,
-                                      decoration: BoxDecoration(
-                                          border: Border.all(
-                                              width: 5.8,
-                                              color: posterTextColor),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Colors.black26,
-                                              spreadRadius: 7,
-                                              blurRadius: 14,
-                                              offset: Offset(0,
-                                                  3), // changes position of shadow
-                                            ),
-                                          ],
-                                          color: posterColor),
-                                      child: Stack(
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.all(40.0),
-                                            child: Column(
-                                              children: [
-                                                Container(
-                                                  height: 1020,
-                                                  decoration: BoxDecoration(
-                                                    border: Border.all(
-                                                      width:
-                                                          coverborder ? 3.1 : 0,
-                                                      color: coverborder
-                                                          ? posterTextColor
-                                                          : Color(0xF5EDEC),
-                                                    ),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: !textShadow
-                                                            ? Color(0x5F5EDEC)
-                                                            : Colors.black26,
-                                                        spreadRadius: 9,
-                                                        blurRadius: 18,
-                                                        offset: Offset(1,
-                                                            1), // changes position of shadow
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: _imageBytes == null
-                                                      ? Image.network(
-                                                          networkimage,
-                                                          fit: BoxFit
-                                                              .cover, // Adjust to fill the container
-                                                        )
-                                                      : Image.memory(
-                                                          _imageBytes!,
-                                                          fit: BoxFit.cover,
-                                                        ),
-                                                ),
-                                                const SizedBox(
-                                                  height: 30,
-                                                ),
-                                                Expanded(
-                                                  child: Center(
-                                                    child: Container(
-                                                        child: Stack(
-                                                      children: [
-                                                        // Row(
-                                                        //   children: [
-                                                        //     Expanded(
-                                                        //         child: Container(
-                                                        //       height: double.infinity,
-                                                        //       color: Colors.grey,
-                                                        //       child: ListView.builder(
-                                                        //           itemCount: 2,
-                                                        //           itemBuilder:
-                                                        //               (BuildContext
-                                                        //                       context,
-                                                        //                   int index) {
-                                                        //             return Container(
-                                                        //               color:
-                                                        //                   Colors.green,
-                                                        //               width: 10,
-                                                        //               height: 20,
-                                                        //             );
-                                                        //           }),
-                                                        //     )),
-                                                        //     Expanded(
-                                                        //         child: Container(
-                                                        //       height: double.infinity,
-                                                        //       color: Colors.teal,
-                                                        //     ))
-                                                        //   ],
-                                                        // )
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(8.0),
-                                                          child: Wrap(
-                                                            runSpacing: 7.0,
-                                                            spacing: 0,
-                                                            direction:
-                                                                Axis.vertical,
-                                                            children: [
-                                                              for (int i = 0;
-                                                                  i <
-                                                                      trackTitles
-                                                                          .length;
-                                                                  i++)
-                                                                Container(
-                                                                  width:
-                                                                      textwidth,
-                                                                  height:
-                                                                      textheight,
-                                                                  child: FittedBox(
-                                                                      alignment: Alignment.centerLeft,
-                                                                      child: Container(
-                                                                        child:
-                                                                            Row(
-                                                                          children: [
-                                                                            Text(
-                                                                              (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
-                                                                              style: TextStyle(
-                                                                                  fontFamily: 'Schyler',
-                                                                                  shadows: [
-                                                                                    Shadow(
-                                                                                      blurRadius: 13.0, // shadow blur
-                                                                                      color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                                      offset: Offset(2.0, 2.0), // how much shadow will be shown
-                                                                                    ),
-                                                                                  ],
-                                                                                  color: posterTextColor),
-                                                                              // Handles long text
-                                                                              softWrap: true,
-                                                                              // Allows wrapping
-                                                                            ),
-                                                                          ],
-                                                                        ),
-                                                                      )),
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        Visibility(
-                                                          visible: showsquare,
-                                                          child: Row(
-                                                            children: [
-                                                              Spacer(),
-                                                              Container(
-                                                                height: 69,
-                                                                width: 69,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color:
-                                                                      squarecolors[
-                                                                          0],
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 4,
-                                                                    color:
-                                                                        posterTextColor,
-                                                                  ),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: !textShadow
-                                                                          ? Color(
-                                                                              0x5F5EDEC)
-                                                                          : Colors
-                                                                              .black26,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 12,
-                                                              ),
-                                                              Container(
-                                                                height: 69,
-                                                                width: 69,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color:
-                                                                      squarecolors[
-                                                                          1],
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 4,
-                                                                    color:
-                                                                        posterTextColor,
-                                                                  ),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: !textShadow
-                                                                          ? Color(
-                                                                              0x5F5EDEC)
-                                                                          : Colors
-                                                                              .black26,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 12,
-                                                              ),
-                                                              Container(
-                                                                height: 69,
-                                                                width: 69,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color:
-                                                                      squarecolors[
-                                                                          2],
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 4,
-                                                                    color:
-                                                                        posterTextColor,
-                                                                  ),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: !textShadow
-                                                                          ? Color(
-                                                                              0x5F5EDEC)
-                                                                          : Colors
-                                                                              .black26,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 12,
-                                                              ),
-                                                              Container(
-                                                                height: 69,
-                                                                width: 69,
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color:
-                                                                      squarecolors[
-                                                                          3],
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 4,
-                                                                    color:
-                                                                        posterTextColor,
-                                                                  ),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: !textShadow
-                                                                          ? Color(
-                                                                              0x5F5EDEC)
-                                                                          : Colors
-                                                                              .black26,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                              SizedBox(
-                                                                width: 16,
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        Column(
-                                                          children: [
-                                                            Spacer(),
-                                                            Row(
-                                                              children: [
-                                                                Spacer(),
-                                                                Container(
-                                                                  constraints:
-                                                                      const BoxConstraints(
-                                                                    maxWidth:
-                                                                        480,
-                                                                  ),
-                                                                  child: Text(
-                                                                    albumname,
-                                                                    textAlign:
-                                                                        TextAlign
-                                                                            .right,
-                                                                    style: TextStyle(
-                                                                        fontFamily: 'Trajan Pro',
-                                                                        shadows: [
-                                                                          Shadow(
-                                                                            blurRadius:
-                                                                                20.0, // shadow blur
-                                                                            color: !textShadow
-                                                                                ? Color(0x5F5EDEC)
-                                                                                : Colors.black26, // shadow color
-                                                                            offset:
-                                                                                Offset(2.0, 2.0), // how much shadow will be shown
-                                                                          ),
-                                                                        ],
-                                                                        fontSize: albumsize,
-                                                                        color: posterTextColor),
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                            SizedBox(
-                                                              height: 13,
-                                                            ),
-                                                            Transform.translate(
-                                                              offset: Offset(
-                                                                  0, -10),
-                                                              child: Row(
-                                                                children: [
-                                                                  Spacer(),
-                                                                  Container(
-                                                                    width: 300,
-                                                                    height: 60,
-                                                                    child:
-                                                                        Align(
-                                                                      alignment:
-                                                                          Alignment
-                                                                              .centerRight,
-                                                                      child:
-                                                                          FittedBox(
-                                                                        child:
-                                                                            Text(
-                                                                          albumartist,
-                                                                          style: TextStyle(
-                                                                              fontFamily: 'Schyler',
-                                                                              shadows: [
-                                                                                Shadow(
-                                                                                  blurRadius: 10.0, // shadow blur
-                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                                  offset: Offset(2.0, 2.0), // how much shadow will be shown
-                                                                                ),
-                                                                              ],
-                                                                              fontSize: 60,
-                                                                              color: posterTextColor),
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                            Transform.translate(
-                                                              offset: Offset(
-                                                                  0, -10),
-                                                              child: Row(
-                                                                children: [
-                                                                  Spacer(),
-                                                                  Container(
-                                                                    width: 300,
-                                                                    height: 42,
-                                                                    child:
-                                                                        Align(
-                                                                      alignment:
-                                                                          Alignment
-                                                                              .centerRight,
-                                                                      child:
-                                                                          FittedBox(
-                                                                        child:
-                                                                            Text(
-                                                                          releaseyear2,
-                                                                          style: TextStyle(
-                                                                              fontFamily: 'Schyler',
-                                                                              shadows: [
-                                                                                Shadow(
-                                                                                  blurRadius: 15.0, // shadow blur
-                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                                  offset: Offset(2.0, 2.0), // how much shadow will be shown
-                                                                                ),
-                                                                              ],
-                                                                              fontSize: 50,
-                                                                              color: posterTextColor),
-                                                                        ),
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        )
-                                                      ],
-                                                    )),
-                                                  ),
-                                                )
-                                              ],
-                                            ),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                : Screenshot(
-                                    controller: screenshotController,
-                                    child: Container(
-                                      width: posterwidth,
-                                      height: posterheight,
-                                      decoration: BoxDecoration(
-                                          border: Border.all(
-                                              width: 14,
-                                              color:posterColor),
-                                          boxShadow: const [
-                                            BoxShadow(
-                                              color: Colors.black26,
-                                              spreadRadius: 7,
-                                              blurRadius: 10,
-                                              offset: Offset(0,
-                                                  2), // changes position of shadow
-                                            ),
-                                          ],
-                                          color: Colors.white),
-                                      child: Stack(
-                                        children: [
-                                          Container(
-                                              width: double.infinity,
-                                              height: 1200,
-                                              child: _imageBytes == null
-                                                  ? Image.network(
-                                                      networkimage,
-                                                      fit: BoxFit
-                                                          .cover, // Adjust to fill the container
-                                                    )
-                                                  : Image.memory(
-                                                      _imageBytes!,
-                                                      fit: BoxFit.cover,
-                                                    )),
-                                          Column(
-                                            children: [
-                                              Expanded(
-                                                flex: 20,
-                                                child: Container(),
-                                              ),
-                                              Expanded(
-                                                flex: 55,
+              Visibility(
+                child: Expanded(
+                  child: Visibility(
+                    visible: !viewinroon,
+                    child: Container(
+                      width: double.infinity,
+                      child: viewinroon
+                          ? Transform(
+                              alignment: Alignment.center,
+                              transform: matrix,
+                              child: Center(
+                                child: Center(
+                                  child: FittedBox(
+                                    child: Padding(
+                                        padding: const EdgeInsets.all(50.0),
+                                        child: classicTemp
+                                            ? Screenshot(
+                                                controller:
+                                                    screenshotController,
                                                 child: Container(
-                                                  width: double.infinity,
+                                                  width: posterwidth,
+                                                  height: posterheight,
                                                   decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                          begin: Alignment
-                                                              .topCenter,
-                                                          end: Alignment
-                                                              .bottomCenter,
-                                                          colors: [
-                                                        posterColor
-                                                            .withOpacity(0.0),
-                                                        posterColor
-                                                            .withOpacity(1),
-                                                      ],
-                                                          stops: [
-                                                        0.04,
-                                                        0.5
-                                                      ])),
-                                                  child: Column(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      SizedBox(
-                                                        height: 390,
-                                                      ),
-                                                      Transform.translate(
-                                                        offset: Offset(0, 20),
-                                                        child: Container(//ppp
-
-
-                                                          width: double.infinity,
-                                                          margin: EdgeInsets.all(15.0),
-                                                          height: 200,
-                                                          alignment: Alignment.bottomCenter,
-
-                                                          child: AutoSizeText(
-                                                            albumname.toUpperCase(),
-
-                                                            maxLines: 1,
-                                                            wrapWords: false,
-                                                            minFontSize: 20,
-                                                            style: TextStyle(
-                                                              fontFamily: 'TempBold',
-                                                              height: 0.8,
-                                                              shadows: [
-                                                                Shadow(
-                                                                  blurRadius: 20.0,
-                                                                  color: !textShadow
-                                                                      ? Color(0x5F5EDEC)
-                                                                      : Colors.black26,
-                                                                  offset: Offset(2.0, 10.0),
-                                                                ),
-                                                              ],
-                                                              fontSize: 200,
-                                                              color: posterTextColor,
-                                                            ),
-                                                          ),
+                                                      border: Border.all(
+                                                          width: 15,
+                                                          color:
+                                                              posterTextColor),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color: Colors.black26,
+                                                          spreadRadius: 10,
+                                                          blurRadius: 14,
+                                                          offset: Offset(-10,
+                                                              10), // changes position of shadow
                                                         ),
-                                                      ),
-                                                      Transform.translate(//posterartist
-                                                        offset: Offset(0, 0),
-                                                        child: Align(
-                                                          child: Text(
-                                                            "${albumartist.toUpperCase()} - $releaseyear2 ",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'TempBold',
-                                                                fontSize: 60,
-                                                                shadows: [
-                                                                  Shadow(
-                                                                    blurRadius:
-                                                                        20.0, // shadow blur
+                                                      ],
+                                                      color: posterColor),
+                                                  child: Stack(
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(40.0),
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              height: 1020,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                border:
+                                                                    Border.all(
+                                                                  width:
+                                                                      coverborder
+                                                                          ? 3.1
+                                                                          : 0,
+                                                                  color: coverborder
+                                                                      ? posterTextColor
+                                                                      : Color(
+                                                                          0xF5EDEC),
+                                                                ),
+                                                                boxShadow: [
+                                                                  BoxShadow(
                                                                     color: !textShadow
                                                                         ? Color(
                                                                             0x5F5EDEC)
                                                                         : Colors
-                                                                            .black26, // shadow color
+                                                                            .black26,
+                                                                    spreadRadius:
+                                                                        9,
+                                                                    blurRadius:
+                                                                        18,
                                                                     offset: Offset(
-                                                                        2.0,
-                                                                        10.0), // how much shadow will be shown
+                                                                        1,
+                                                                        1), // changes position of shadow
                                                                   ),
                                                                 ],
-                                                                color:
-                                                                    posterTextColor),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      Transform.translate(//posterline
-                                                        offset: Offset(0, 0),
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(8.0),
-                                                          child: Container(
-                                                            width:
-                                                                double.infinity,
-                                                            height: 14,
-                                                            color:
-                                                                posterTextColor,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      ClipRRect(
-                                                        child: Container(
-                                                          //moveup
-                                                          width:
-                                                          double.infinity,
-                                                          height: 562,
-                                                        
-                                                          child: Padding(
-                                                            padding:
-                                                            const EdgeInsets
-                                                                .all(10.0),
-                                                            child: Wrap(
-                                                              //posterwrap
-                                                              runSpacing: 10.0,
-                                                              spacing: 0,
-                                                              direction: Axis
-                                                                  .vertical,
-                                                              children: [
-                                                                for (int i =
-                                                                0;
-                                                                i <
-                                                                    trackTitles
-                                                                        .length;
-                                                                i++)
-                                                                  Padding(
-                                                                    padding: const EdgeInsets
-                                                                        .all(
-                                                                        0.1),
-                                                                    child:
-                                                                    Container(
-                                                                      width: posterwidth /
-                                                                          posterrows -20,
-
-                                                        
-                                                        
-                                                        
+                                                              ),
+                                                              child: _imageBytes ==
+                                                                      null
+                                                                  ? Image
+                                                                      .network(
+                                                                      networkimage,
+                                                                      fit: BoxFit
+                                                                          .cover, // Adjust to fill the container
+                                                                    )
+                                                                  : Image
+                                                                      .memory(
+                                                                      _imageBytes!,
+                                                                      fit: BoxFit
+                                                                          .cover,
+                                                                    ),
+                                                            ),
+                                                            const SizedBox(
+                                                              height: 30,
+                                                            ),
+                                                            Expanded(
+                                                              child: Center(
+                                                                child: Container(
+                                                                    child: Stack(
+                                                                  children: [
+                                                                    // Row(
+                                                                    //   children: [
+                                                                    //     Expanded(
+                                                                    //         child: Container(
+                                                                    //       height: double.infinity,
+                                                                    //       color: Colors.grey,
+                                                                    //       child: ListView.builder(
+                                                                    //           itemCount: 2,
+                                                                    //           itemBuilder:
+                                                                    //               (BuildContext
+                                                                    //                       context,
+                                                                    //                   int index) {
+                                                                    //             return Container(
+                                                                    //               color:
+                                                                    //                   Colors.green,
+                                                                    //               width: 10,
+                                                                    //               height: 20,
+                                                                    //             );
+                                                                    //           }),
+                                                                    //     )),
+                                                                    //     Expanded(
+                                                                    //         child: Container(
+                                                                    //       height: double.infinity,
+                                                                    //       color: Colors.teal,
+                                                                    //     ))
+                                                                    //   ],
+                                                                    // )
+                                                                    Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          8.0),
                                                                       child:
-                                                                      Text(
-                                                                        (i + 1).toString() +
-                                                                            ": " +
-                                                                            trackTitles[i].toUpperCase(),
-                                                                        style: TextStyle(
-                                                                            fontFamily: 'TempBold',
-                                                                            height:1.1,
-                                                                            shadows: [
-                                                                              Shadow(
-                                                                                blurRadius: 13.0, // shadow blur
-                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                                offset: Offset(2.1, 2.0), // how much shadow will be shown
+                                                                          Wrap(
+                                                                        runSpacing:
+                                                                            7.0,
+                                                                        spacing:
+                                                                            0,
+                                                                        direction:
+                                                                            Axis.vertical,
+                                                                        children: [
+                                                                          for (int i = 0;
+                                                                              i < trackTitles.length;
+                                                                              i++)
+                                                                            Container(
+                                                                              width: textwidth,
+                                                                              height: textheight,
+                                                                              child: FittedBox(
+                                                                                  alignment: Alignment.centerLeft,
+                                                                                  child: Container(
+                                                                                    child: Row(
+                                                                                      children: [
+                                                                                        Text(
+                                                                                          (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                          style: TextStyle(
+                                                                                              fontFamily: 'Schyler',
+                                                                                              shadows: [
+                                                                                                Shadow(
+                                                                                                  blurRadius: 13.0, // shadow blur
+                                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                                  offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                                ),
+                                                                                              ],
+                                                                                              color: posterTextColor),
+                                                                                          // Handles long text
+                                                                                          softWrap: true,
+                                                                                          // Allows wrapping
+                                                                                        ),
+                                                                                      ],
+                                                                                    ),
+                                                                                  )),
+                                                                            ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                    Visibility(
+                                                                      visible:
+                                                                          showsquare,
+                                                                      child:
+                                                                          Row(
+                                                                        children: [
+                                                                          Spacer(),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[0],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[1],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[2],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                12,
+                                                                          ),
+                                                                          Container(
+                                                                            height:
+                                                                                69,
+                                                                            width:
+                                                                                69,
+                                                                            decoration:
+                                                                                BoxDecoration(
+                                                                              color: squarecolors[3],
+                                                                              border: Border.all(
+                                                                                width: 4,
+                                                                                color: posterTextColor,
+                                                                              ),
+                                                                              boxShadow: [
+                                                                                BoxShadow(
+                                                                                  color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                  spreadRadius: 2,
+                                                                                  blurRadius: 15,
+                                                                                  offset: Offset(1, 5), // changes position of shadow
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                16,
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                    Column(
+                                                                      children: [
+                                                                        Spacer(),
+                                                                        Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              constraints: const BoxConstraints(
+                                                                                maxWidth: 480,
+                                                                              ),
+                                                                              child: Text(
+                                                                                albumname,
+                                                                                textAlign: TextAlign.right,
+                                                                                style: TextStyle(
+                                                                                    fontFamily: 'Trajan Pro',
+                                                                                    shadows: [
+                                                                                      Shadow(
+                                                                                        blurRadius: 20.0, // shadow blur
+                                                                                        color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                        offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                      ),
+                                                                                    ],
+                                                                                    fontSize: albumsize,
+                                                                                    color: posterTextColor),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                        SizedBox(
+                                                                          height:
+                                                                              13,
+                                                                        ),
+                                                                        Transform
+                                                                            .translate(
+                                                                          offset: Offset(
+                                                                              0,
+                                                                              -10),
+                                                                          child:
+                                                                              Row(
+                                                                            children: [
+                                                                              Spacer(),
+                                                                              Container(
+                                                                                width: 300,
+                                                                                height: 60,
+                                                                                child: Align(
+                                                                                  alignment: Alignment.centerRight,
+                                                                                  child: FittedBox(
+                                                                                    child: Text(
+                                                                                      albumartist,
+                                                                                      style: TextStyle(
+                                                                                          fontFamily: 'Schyler',
+                                                                                          shadows: [
+                                                                                            Shadow(
+                                                                                              blurRadius: 10.0, // shadow blur
+                                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                              offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                            ),
+                                                                                          ],
+                                                                                          fontSize: 60,
+                                                                                          color: posterTextColor),
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
                                                                               ),
                                                                             ],
-                                                                            fontSize: Newtextheight,
-                                                                            color: posterTextColor),
-                                                                        // Handles long text
-                                                                        softWrap:
-                                                                        true,
-                                                                        // Allows wrapping
-                                                                      ),
-                                                                      // child: FittedBox(
-                                                                      //     alignment: Alignment.centerLeft,
-                                                                      //     child: Container(
-                                                                      //       child:
-                                                                      //       Row(
-                                                                      //         children: [
-                                                                      //           Text(
-                                                                      //             (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
-                                                                      //             style: TextStyle(
-                                                                      //                 fontFamily: 'TempBoldUltra',
-                                                                      //                 // shadows: [
-                                                                      //                 //   Shadow(
-                                                                      //                 //     blurRadius: 13.0, // shadow blur
-                                                                      //                 //     color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
-                                                                      //                 //     offset: Offset(2.0, 2.0), // how much shadow will be shown
-                                                                      //                 //   ),
-                                                                      //                 // ],
-                                                                      //                 color: posterTextColor),
-                                                                      //             // Handles long text
-                                                                      //             softWrap: true,
-                                                                      //             // Allows wrapping
-                                                                      //           ),
-                                                                      //         ],
-                                                                      //       ),
-                                                                      //     )),
-                                                                    ),
-                                                                  ),
-                                                              ],
-                                                            ),
-                                                          ),
+                                                                          ),
+                                                                        ),
+                                                                        Transform
+                                                                            .translate(
+                                                                          offset: Offset(
+                                                                              0,
+                                                                              -10),
+                                                                          child:
+                                                                              Row(
+                                                                            children: [
+                                                                              Spacer(),
+                                                                              Container(
+                                                                                width: 300,
+                                                                                height: 42,
+                                                                                child: Align(
+                                                                                  alignment: Alignment.centerRight,
+                                                                                  child: FittedBox(
+                                                                                    child: Text(
+                                                                                      releaseyear2,
+                                                                                      style: TextStyle(
+                                                                                          fontFamily: 'Schyler',
+                                                                                          shadows: [
+                                                                                            Shadow(
+                                                                                              blurRadius: 15.0, // shadow blur
+                                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                              offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                            ),
+                                                                                          ],
+                                                                                          fontSize: 50,
+                                                                                          color: posterTextColor),
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                      ],
+                                                                    )
+                                                                  ],
+                                                                )),
+                                                              ),
+                                                            )
+                                                          ],
                                                         ),
-                                                      ),
+                                                      )
                                                     ],
                                                   ),
                                                 ),
                                               )
-                                            ],
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                  )),
-                      ),
+                                            : Screenshot(
+                                                controller:
+                                                    screenshotController,
+                                                child: Container(
+                                                  width: posterwidth,
+                                                  height: posterheight,
+                                                  decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                          width: 8.5,
+                                                          color: matchPoster
+                                                              ? posterColor
+                                                              : posterTextColor),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color: Colors.black26,
+                                                          spreadRadius: 7,
+                                                          blurRadius: 10,
+                                                          offset: Offset(0,
+                                                              2), // changes position of shadow
+                                                        ),
+                                                      ],
+                                                      color: Colors.white),
+                                                  child: Stack(
+                                                    children: [
+                                                      Container(
+                                                          width: 1800,
+                                                          height: 1200,
+                                                          child: _imageBytes ==
+                                                                  null
+                                                              ? Image.network(
+                                                                  networkimage,
+                                                                  fit: BoxFit
+                                                                      .cover, // Adjust to fill the container
+                                                                )
+                                                              : Image.memory(
+                                                                  _imageBytes!,
+                                                                  fit: BoxFit
+                                                                      .cover,
+                                                                )),
+                                                      Column(
+                                                        children: [
+                                                          Expanded(
+                                                            flex: 20,
+                                                            child: Container(),
+                                                          ),
+                                                          Expanded(
+                                                            flex: 55,
+                                                            child: Container(
+                                                              width: double
+                                                                  .infinity,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      gradient: LinearGradient(
+                                                                          begin: Alignment
+                                                                              .topCenter,
+                                                                          end: Alignment
+                                                                              .bottomCenter,
+                                                                          colors: [
+                                                                    posterColor
+                                                                        .withOpacity(
+                                                                            0.0),
+                                                                    posterColor
+                                                                        .withOpacity(
+                                                                            1),
+                                                                  ],
+                                                                          stops: [
+                                                                    0.04,
+                                                                    0.5
+                                                                  ])),
+                                                              child: Column(
+                                                                mainAxisSize:
+                                                                    MainAxisSize
+                                                                        .min,
+                                                                children: [
+                                                                  SizedBox(
+                                                                    height: 390,
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            20),
+                                                                    child:
+                                                                        Container(
+                                                                      //ppp
+
+                                                                      width: double
+                                                                          .infinity,
+                                                                      margin: EdgeInsets
+                                                                          .all(
+                                                                              15.0),
+                                                                      height:
+                                                                          200,
+                                                                      alignment:
+                                                                          Alignment
+                                                                              .bottomCenter,
+
+                                                                      child:
+                                                                          AutoSizeText(
+                                                                        albumname
+                                                                            .toUpperCase(),
+                                                                        maxLines:
+                                                                            1,
+                                                                        wrapWords:
+                                                                            false,
+                                                                        minFontSize:
+                                                                            20,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontFamily:
+                                                                              'TempBold',
+                                                                          height:
+                                                                              0.8,
+                                                                          shadows: [
+                                                                            Shadow(
+                                                                              blurRadius: 20.0,
+                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                              offset: Offset(2.0, 10.0),
+                                                                            ),
+                                                                          ],
+                                                                          fontSize:
+                                                                              200,
+                                                                          color:
+                                                                              posterTextColor,
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    //posterartist
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            7),
+                                                                    child:
+                                                                        Align(
+                                                                      child:
+                                                                          Text(
+                                                                        "${albumartist.toUpperCase()} - $releaseyear2 ",
+                                                                        style: TextStyle(
+                                                                            fontFamily: 'TempBold',
+                                                                            fontSize: 60,
+                                                                            shadows: [
+                                                                              Shadow(
+                                                                                blurRadius: 20.0, // shadow blur
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                offset: Offset(2.0, 10.0), // how much shadow will be shown
+                                                                              ),
+                                                                            ],
+                                                                            color: posterTextColor),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Transform
+                                                                      .translate(
+                                                                    //posterline
+                                                                    offset:
+                                                                        Offset(
+                                                                            0,
+                                                                            0),
+                                                                    child:
+                                                                        Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          8.0),
+                                                                      child:
+                                                                          Container(
+                                                                        width: double
+                                                                            .infinity,
+                                                                        height:
+                                                                            14,
+                                                                        color:
+                                                                            posterTextColor,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Container(
+                                                                    //moveup
+                                                                    width: double
+                                                                        .infinity,
+                                                                    height: 562,
+
+                                                                    child:
+                                                                        Padding(
+                                                                      padding: const EdgeInsets
+                                                                          .all(
+                                                                          10.0),
+                                                                      child:
+                                                                          ClipRRect(
+                                                                        child:
+                                                                            Wrap(
+                                                                          //posterwrap
+                                                                          runSpacing:
+                                                                              10.0,
+                                                                          spacing:
+                                                                              0,
+                                                                          direction:
+                                                                              Axis.vertical,
+                                                                          children: [
+                                                                            for (int i = 0;
+                                                                                i < trackTitles.length;
+                                                                                i++)
+                                                                              Padding(
+                                                                                padding: const EdgeInsets.all(0.1),
+                                                                                child: Container(
+                                                                                  width: posterwidth / posterrows - 20,
+
+                                                                                  child: Text(
+                                                                                    (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'TempBold',
+                                                                                        height: 1.1,
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 13.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.1, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: Newtextheight,
+                                                                                        color: posterTextColor),
+                                                                                    // Handles long text
+                                                                                    softWrap: true,
+                                                                                    // Allows wrapping
+                                                                                  ),
+                                                                                  // child: FittedBox(
+                                                                                  //     alignment: Alignment.centerLeft,
+                                                                                  //     child: Container(
+                                                                                  //       child:
+                                                                                  //       Row(
+                                                                                  //         children: [
+                                                                                  //           Text(
+                                                                                  //             (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                  //             style: TextStyle(
+                                                                                  //                 fontFamily: 'TempBoldUltra',
+                                                                                  //                 // shadows: [
+                                                                                  //                 //   Shadow(
+                                                                                  //                 //     blurRadius: 13.0, // shadow blur
+                                                                                  //                 //     color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                  //                 //     offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                  //                 //   ),
+                                                                                  //                 // ],
+                                                                                  //                 color: posterTextColor),
+                                                                                  //             // Handles long text
+                                                                                  //             softWrap: true,
+                                                                                  //             // Allows wrapping
+                                                                                  //           ),
+                                                                                  //         ],
+                                                                                  //       ),
+                                                                                  //     )),
+                                                                                ),
+                                                                              ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          )
+                                                        ],
+                                                      )
+                                                    ],
+                                                  ),
+                                                ),
+                                              )),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Center(
+                                child: FittedBox(
+                                  child: Padding(
+                                      padding: const EdgeInsets.all(50.0),
+                                      child: classicTemp
+                                          ? Screenshot(
+                                              controller: screenshotController,
+                                              child: Container(
+                                                width: posterwidth,
+                                                height: posterheight,
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                        width: 5.8,
+                                                        color: posterTextColor),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors.black26,
+                                                        spreadRadius: 7,
+                                                        blurRadius: 14,
+                                                        offset: Offset(0,
+                                                            3), // changes position of shadow
+                                                      ),
+                                                    ],
+                                                    color: posterColor),
+                                                child: Stack(
+                                                  children: [
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              40.0),
+                                                      child: Column(
+                                                        children: [
+                                                          Container(
+                                                            height: 1020,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              border:
+                                                                  Border.all(
+                                                                width:
+                                                                    coverborder
+                                                                        ? 3.1
+                                                                        : 0,
+                                                                color: coverborder
+                                                                    ? posterTextColor
+                                                                    : Color(
+                                                                        0xF5EDEC),
+                                                              ),
+                                                              boxShadow: [
+                                                                BoxShadow(
+                                                                  color: !textShadow
+                                                                      ? Color(
+                                                                          0x5F5EDEC)
+                                                                      : Colors
+                                                                          .black26,
+                                                                  spreadRadius:
+                                                                      9,
+                                                                  blurRadius:
+                                                                      18,
+                                                                  offset: Offset(
+                                                                      1,
+                                                                      1), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            child: _imageBytes ==
+                                                                    null
+                                                                ? Image.network(
+                                                                    networkimage,
+                                                                    fit: BoxFit
+                                                                        .cover, // Adjust to fill the container
+                                                                  )
+                                                                : Image.memory(
+                                                                    _imageBytes!,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 30,
+                                                          ),
+                                                          Expanded(
+                                                            child: Center(
+                                                              child: Container(
+                                                                  child: Stack(
+                                                                children: [
+                                                                  // Row(
+                                                                  //   children: [
+                                                                  //     Expanded(
+                                                                  //         child: Container(
+                                                                  //       height: double.infinity,
+                                                                  //       color: Colors.grey,
+                                                                  //       child: ListView.builder(
+                                                                  //           itemCount: 2,
+                                                                  //           itemBuilder:
+                                                                  //               (BuildContext
+                                                                  //                       context,
+                                                                  //                   int index) {
+                                                                  //             return Container(
+                                                                  //               color:
+                                                                  //                   Colors.green,
+                                                                  //               width: 10,
+                                                                  //               height: 20,
+                                                                  //             );
+                                                                  //           }),
+                                                                  //     )),
+                                                                  //     Expanded(
+                                                                  //         child: Container(
+                                                                  //       height: double.infinity,
+                                                                  //       color: Colors.teal,
+                                                                  //     ))
+                                                                  //   ],
+                                                                  // )
+                                                                  Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                    child: Wrap(
+                                                                      runSpacing:
+                                                                          7.0,
+                                                                      spacing:
+                                                                          0,
+                                                                      direction:
+                                                                          Axis.vertical,
+                                                                      children: [
+                                                                        for (int i =
+                                                                                0;
+                                                                            i < trackTitles.length;
+                                                                            i++)
+                                                                          Container(
+                                                                            width:
+                                                                                textwidth,
+                                                                            height:
+                                                                                textheight,
+                                                                            child: FittedBox(
+                                                                                alignment: Alignment.centerLeft,
+                                                                                child: Container(
+                                                                                  child: Row(
+                                                                                    children: [
+                                                                                      Text(
+                                                                                        (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                        style: TextStyle(
+                                                                                            fontFamily: 'Schyler',
+                                                                                            shadows: [
+                                                                                              Shadow(
+                                                                                                blurRadius: 13.0, // shadow blur
+                                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                                offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                              ),
+                                                                                            ],
+                                                                                            color: posterTextColor),
+                                                                                        // Handles long text
+                                                                                        softWrap: true,
+                                                                                        // Allows wrapping
+                                                                                      ),
+                                                                                    ],
+                                                                                  ),
+                                                                                )),
+                                                                          ),
+                                                                      ],
+                                                                    ),
+                                                                  ),
+                                                                  Visibility(
+                                                                    visible:
+                                                                        showsquare,
+                                                                    child: Row(
+                                                                      children: [
+                                                                        Spacer(),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[0],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[1],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[2],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              12,
+                                                                        ),
+                                                                        Container(
+                                                                          height:
+                                                                              69,
+                                                                          width:
+                                                                              69,
+                                                                          decoration:
+                                                                              BoxDecoration(
+                                                                            color:
+                                                                                squarecolors[3],
+                                                                            border:
+                                                                                Border.all(
+                                                                              width: 4,
+                                                                              color: posterTextColor,
+                                                                            ),
+                                                                            boxShadow: [
+                                                                              BoxShadow(
+                                                                                color: !textShadow ? Color(0x5F5EDEC) : Colors.black26,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                          ),
+                                                                        ),
+                                                                        SizedBox(
+                                                                          width:
+                                                                              16,
+                                                                        ),
+                                                                      ],
+                                                                    ),
+                                                                  ),
+                                                                  Column(
+                                                                    children: [
+                                                                      Spacer(),
+                                                                      Row(
+                                                                        children: [
+                                                                          Spacer(),
+                                                                          Container(
+                                                                            constraints:
+                                                                                const BoxConstraints(
+                                                                              maxWidth: 480,
+                                                                            ),
+                                                                            child:
+                                                                                Text(
+                                                                              albumname,
+                                                                              textAlign: TextAlign.right,
+                                                                              style: TextStyle(
+                                                                                  fontFamily: 'Trajan Pro',
+                                                                                  shadows: [
+                                                                                    Shadow(
+                                                                                      blurRadius: 20.0, // shadow blur
+                                                                                      color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                      offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                    ),
+                                                                                  ],
+                                                                                  fontSize: albumsize,
+                                                                                  color: posterTextColor),
+                                                                            ),
+                                                                          ),
+                                                                        ],
+                                                                      ),
+                                                                      SizedBox(
+                                                                        height:
+                                                                            13,
+                                                                      ),
+                                                                      Transform
+                                                                          .translate(
+                                                                        offset: Offset(
+                                                                            0,
+                                                                            -10),
+                                                                        child:
+                                                                            Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              width: 300,
+                                                                              height: 60,
+                                                                              child: Align(
+                                                                                alignment: Alignment.centerRight,
+                                                                                child: FittedBox(
+                                                                                  child: Text(
+                                                                                    albumartist,
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'Schyler',
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 10.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: 60,
+                                                                                        color: posterTextColor),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                      Transform
+                                                                          .translate(
+                                                                        offset: Offset(
+                                                                            0,
+                                                                            -10),
+                                                                        child:
+                                                                            Row(
+                                                                          children: [
+                                                                            Spacer(),
+                                                                            Container(
+                                                                              width: 300,
+                                                                              height: 42,
+                                                                              child: Align(
+                                                                                alignment: Alignment.centerRight,
+                                                                                child: FittedBox(
+                                                                                  child: Text(
+                                                                                    releaseyear2,
+                                                                                    style: TextStyle(
+                                                                                        fontFamily: 'Schyler',
+                                                                                        shadows: [
+                                                                                          Shadow(
+                                                                                            blurRadius: 15.0, // shadow blur
+                                                                                            color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                            offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                          ),
+                                                                                        ],
+                                                                                        fontSize: 50,
+                                                                                        color: posterTextColor),
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  )
+                                                                ],
+                                                              )),
+                                                            ),
+                                                          )
+                                                        ],
+                                                      ),
+                                                    )
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                          : Screenshot(
+                                              controller: screenshotController,
+                                              child: Container(
+                                                width: posterwidth,
+                                                height: posterheight,
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                        width: 8.5,
+                                                        color: matchPoster
+                                                            ? posterColor
+                                                            : posterTextColor),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors.black26,
+                                                        spreadRadius: 7,
+                                                        blurRadius: 10,
+                                                        offset: Offset(0,
+                                                            2), // changes position of shadow
+                                                      ),
+                                                    ],
+                                                    color: Colors.white),
+                                                child: Stack(
+                                                  children: [
+                                                    Container(
+                                                        width: 1800,
+                                                        height: 1200,
+                                                        child:
+                                                            _imageBytes == null
+                                                                ? Image.network(
+                                                                    networkimage,
+                                                                    fit: BoxFit
+                                                                        .cover, // Adjust to fill the container
+                                                                  )
+                                                                : Image.memory(
+                                                                    _imageBytes!,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  )),
+                                                    Column(
+                                                      children: [
+                                                        Expanded(
+                                                          flex: 20,
+                                                          child: Container(),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 55,
+                                                          child: Container(
+                                                            width:
+                                                                double.infinity,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                    gradient: LinearGradient(
+                                                                        begin: Alignment
+                                                                            .topCenter,
+                                                                        end: Alignment
+                                                                            .bottomCenter,
+                                                                        colors: [
+                                                                  posterColor
+                                                                      .withOpacity(
+                                                                          0.0),
+                                                                  posterColor
+                                                                      .withOpacity(
+                                                                          1),
+                                                                ],
+                                                                        stops: [
+                                                                  0.04,
+                                                                  0.5
+                                                                ])),
+                                                            child: Column(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                SizedBox(
+                                                                  height: 390,
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  offset:
+                                                                      Offset(0,
+                                                                          20),
+                                                                  child:
+                                                                      Container(
+                                                                    //ppp
+
+                                                                    width: double
+                                                                        .infinity,
+                                                                    margin: EdgeInsets
+                                                                        .all(
+                                                                            15.0),
+                                                                    height: 200,
+                                                                    alignment:
+                                                                        Alignment
+                                                                            .bottomCenter,
+
+                                                                    child:
+                                                                        AutoSizeText(
+                                                                      albumname
+                                                                          .toUpperCase(),
+                                                                      maxLines:
+                                                                          1,
+                                                                      wrapWords:
+                                                                          false,
+                                                                      minFontSize:
+                                                                          20,
+                                                                      style:
+                                                                          TextStyle(
+                                                                        fontFamily:
+                                                                            'TempBold',
+                                                                        height:
+                                                                            0.8,
+                                                                        shadows: [
+                                                                          Shadow(
+                                                                            blurRadius:
+                                                                                20.0,
+                                                                            color: !textShadow
+                                                                                ? Color(0x5F5EDEC)
+                                                                                : Colors.black26,
+                                                                            offset:
+                                                                                Offset(2.0, 10.0),
+                                                                          ),
+                                                                        ],
+                                                                        fontSize:
+                                                                            200,
+                                                                        color:
+                                                                            posterTextColor,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  //posterartist
+                                                                  offset:
+                                                                      Offset(
+                                                                          0, 7),
+                                                                  child: Align(
+                                                                    child: Text(
+                                                                      "${albumartist.toUpperCase()} - $releaseyear2 ",
+                                                                      style: TextStyle(
+                                                                          fontFamily: 'TempBold',
+                                                                          fontSize: 60,
+                                                                          shadows: [
+                                                                            Shadow(
+                                                                              blurRadius: 20.0, // shadow blur
+                                                                              color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                              offset: Offset(2.0, 10.0), // how much shadow will be shown
+                                                                            ),
+                                                                          ],
+                                                                          color: posterTextColor),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Transform
+                                                                    .translate(
+                                                                  //posterline
+                                                                  offset:
+                                                                      Offset(
+                                                                          0, 0),
+                                                                  child:
+                                                                      Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                    child:
+                                                                        Container(
+                                                                      width: double
+                                                                          .infinity,
+                                                                      height:
+                                                                          14,
+                                                                      color:
+                                                                          posterTextColor,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                                Container(
+                                                                  //moveup
+                                                                  width: double
+                                                                      .infinity,
+                                                                  height: 562,
+
+                                                                  child:
+                                                                      Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            10.0),
+                                                                    child:
+                                                                        ClipRRect(
+                                                                      child:
+                                                                          Wrap(
+                                                                        //posterwrap
+                                                                        runSpacing:
+                                                                            10.0,
+                                                                        spacing:
+                                                                            0,
+                                                                        direction:
+                                                                            Axis.vertical,
+                                                                        children: [
+                                                                          for (int i = 0;
+                                                                              i < trackTitles.length;
+                                                                              i++)
+                                                                            Padding(
+                                                                              padding: const EdgeInsets.all(0.1),
+                                                                              child: Container(
+                                                                                width: posterwidth / posterrows - 20,
+
+                                                                                child: Text(
+                                                                                  (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                  style: TextStyle(
+                                                                                      fontFamily: 'TempBold',
+                                                                                      height: 1.1,
+                                                                                      shadows: [
+                                                                                        Shadow(
+                                                                                          blurRadius: 13.0, // shadow blur
+                                                                                          color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                          offset: Offset(2.1, 2.0), // how much shadow will be shown
+                                                                                        ),
+                                                                                      ],
+                                                                                      fontSize: Newtextheight,
+                                                                                      color: posterTextColor),
+                                                                                  // Handles long text
+                                                                                  softWrap: true,
+                                                                                  // Allows wrapping
+                                                                                ),
+                                                                                // child: FittedBox(
+                                                                                //     alignment: Alignment.centerLeft,
+                                                                                //     child: Container(
+                                                                                //       child:
+                                                                                //       Row(
+                                                                                //         children: [
+                                                                                //           Text(
+                                                                                //             (i + 1).toString() + ": " + trackTitles[i].toUpperCase(),
+                                                                                //             style: TextStyle(
+                                                                                //                 fontFamily: 'TempBoldUltra',
+                                                                                //                 // shadows: [
+                                                                                //                 //   Shadow(
+                                                                                //                 //     blurRadius: 13.0, // shadow blur
+                                                                                //                 //     color: !textShadow ? Color(0x5F5EDEC) : Colors.black26, // shadow color
+                                                                                //                 //     offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                                //                 //   ),
+                                                                                //                 // ],
+                                                                                //                 color: posterTextColor),
+                                                                                //             // Handles long text
+                                                                                //             softWrap: true,
+                                                                                //             // Allows wrapping
+                                                                                //           ),
+                                                                                //         ],
+                                                                                //       ),
+                                                                                //     )),
+                                                                              ),
+                                                                            ),
+                                                                        ],
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        )
+                                                      ],
+                                                    )
+                                                  ],
+                                                ),
+                                              ),
+                                            )),
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -1485,7 +3595,7 @@ class _SpotState extends State<Spot> {
                                 style: TextStyle(
                                     fontFamily: 'Schyler',
                                     fontSize: 10,
-                                    color: Colors.black54),
+                                    color: Colors.black),
                                 // Handles long text
                                 softWrap: true,
 
@@ -1575,7 +3685,7 @@ class _SpotState extends State<Spot> {
                                                 height: 40,
                                                 child: Center(
                                                   child: Text(
-                                                    "New Template",
+                                                    "New Template (Beta)",
                                                     style: TextStyle(
                                                         fontFamily: 'Schyler',
                                                         fontSize: 15),
@@ -1679,7 +3789,7 @@ class _SpotState extends State<Spot> {
                           MediaQuery.of(context).size.height <= 600)
                       ? MediaQuery.of(context).size.height * 0.4
                       : colorSetting
-                          ? 220
+                          ? 240
                           : connected
                               ? moreSetting
                                   ? 140
@@ -3285,14 +5395,52 @@ class _SpotState extends State<Spot> {
                                     SizedBox(
                                       height: 7,
                                     ),
-                                    Text(
-                                      "Recommended Colors For Album ",
-                                      style: TextStyle(
-                                          fontFamily: 'Schyler', fontSize: 13),
-                                      // Handles long text
-                                      softWrap: true,
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "Recommended Colors",
+                                          style: TextStyle(
+                                              fontFamily: 'Schyler',
+                                              fontSize: 13),
+                                          // Handles long text
+                                          softWrap: true,
 
-                                      // Allows wrapping
+                                          // Allows wrapping
+                                        ),
+                                        Container(
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                              border: Border.all(
+                                                width: hoverstatus == false
+                                                    ? 1.3
+                                                    : 1.9,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(30),
+                                              boxShadow: const [
+                                                BoxShadow(
+                                                  color: Colors.black12,
+                                                  spreadRadius: 2,
+                                                  blurRadius: 15,
+                                                  offset: Offset(1,
+                                                      5), // changes position of shadow
+                                                ),
+                                              ],
+                                              color: Color(0xBEE0E0E0)),
+                                          child: Center(
+                                            child: Text(
+                                              "Exrit",
+                                              style: TextStyle(
+                                                  fontFamily: 'Schyler',
+                                                  fontSize: 15),
+                                              // Handles long text
+                                              softWrap: true,
+
+                                              // Allows wrapping
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     Stack(
                                       children: [
@@ -3646,14 +5794,116 @@ class _SpotState extends State<Spot> {
                                     SizedBox(
                                       height: 7,
                                     ),
-                                    Text(
-                                      "Recommended Colors For Album ",
-                                      style: TextStyle(
-                                          fontFamily: 'Schyler', fontSize: 13),
-                                      // Handles long text
-                                      softWrap: true,
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          "Set Color For ",
+                                          style: TextStyle(
+                                              fontFamily: 'Schyler',
+                                              fontSize: 13),
+                                          // Handles long text
+                                          softWrap: true,
 
-                                      // Allows wrapping
+                                          // Allows wrapping
+                                        ),
+                                        InkWell(
+                                          child: Container(
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                                border: Border.all(
+                                                    width: setPoster == false
+                                                        ? 1.3
+                                                        : 1.9,
+                                                    color: setPoster
+                                                        ? Colors.green
+                                                        : Colors.black),
+                                                borderRadius:
+                                                    BorderRadius.circular(30),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Colors.black12,
+                                                    spreadRadius: 2,
+                                                    blurRadius: 15,
+                                                    offset: Offset(1,
+                                                        5), // changes position of shadow
+                                                  ),
+                                                ],
+                                                color: Color(0xBEE0E0E0)),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.all(10.0),
+                                              child: Center(
+                                                child: Text(
+                                                  "Poster",
+                                                  style: TextStyle(
+                                                      fontFamily: 'Schyler',
+                                                      fontSize: 10),
+                                                  // Handles long text
+                                                  softWrap: true,
+
+                                                  // Allows wrapping
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          onTap: () {
+                                            setState(() {
+                                              setPoster = true;
+                                            });
+                                          },
+                                        ),
+                                        SizedBox(
+                                          width: 5,
+                                        ),
+                                        InkWell(
+                                          child: Container(
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                                border: Border.all(
+                                                    width: setPoster == true
+                                                        ? 1.3
+                                                        : 1.9,
+                                                    color: setPoster
+                                                        ? Colors.black
+                                                        : Colors.green),
+                                                borderRadius:
+                                                    BorderRadius.circular(30),
+                                                boxShadow: const [
+                                                  BoxShadow(
+                                                    color: Colors.black12,
+                                                    spreadRadius: 2,
+                                                    blurRadius: 15,
+                                                    offset: Offset(1,
+                                                        5), // changes position of shadow
+                                                  ),
+                                                ],
+                                                color: Color(0xBEE0E0E0)),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.all(10.0),
+                                              child: Center(
+                                                child: Text(
+                                                  "Text",
+                                                  style: TextStyle(
+                                                      fontFamily: 'Schyler',
+                                                      fontSize: 10),
+                                                  // Handles long text
+                                                  softWrap: true,
+
+                                                  // Allows wrapping
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          onTap: () {
+                                            setState(() {
+                                              setPoster = false;
+                                            });
+                                          },
+                                        ),
+                                      ],
                                     ),
                                     Stack(
                                       children: [
@@ -3683,7 +5933,7 @@ class _SpotState extends State<Spot> {
                                                   color: Color(0xBDEACCCC)),
                                               child: Center(
                                                 child: Text(
-                                                  "Poster Must Have an Album",
+                                                  "Create poster to see recommended colors",
                                                   style: TextStyle(
                                                       fontFamily: 'Schyler',
                                                       fontSize: 15,
@@ -3710,13 +5960,20 @@ class _SpotState extends State<Spot> {
                                                       const EdgeInsets.all(5.0),
                                                   child: InkWell(
                                                     onTap: () {
-                                                      setState(() {
-                                                        posterColor =
-                                                            squarecolors6[i];
-                                                      });
+                                                      if (setPoster == true) {
+                                                        setState(() {
+                                                          posterColor =
+                                                              squarecolors6[i];
+                                                        });
+                                                      } else {
+                                                        setState(() {
+                                                          posterTextColor =
+                                                              squarecolors6[i];
+                                                        });
+                                                      }
                                                     },
                                                     child: Container(
-                                                      height: 35,
+                                                      height: 40,
                                                       decoration: BoxDecoration(
                                                           color:
                                                               squarecolors6[i],
@@ -3755,7 +6012,7 @@ class _SpotState extends State<Spot> {
                                     ),
 
                                     Container(
-                                      margin: EdgeInsets.all(8.0),
+                                      margin: EdgeInsets.all(6.0),
                                       decoration: BoxDecoration(
                                           border: Border.all(
                                             width: hoverstatus == false
@@ -3763,7 +6020,7 @@ class _SpotState extends State<Spot> {
                                                 : 1.9,
                                           ),
                                           borderRadius:
-                                              BorderRadius.circular(30),
+                                              BorderRadius.circular(40),
                                           boxShadow: const [
                                             BoxShadow(
                                               color: Colors.black12,
@@ -3800,164 +6057,251 @@ class _SpotState extends State<Spot> {
                                                       padding:
                                                           const EdgeInsets.all(
                                                               8.0),
-                                                      child: Column(
+                                                      child: Stack(
                                                         children: [
-                                                          Center(
-                                                            child: Row(
-                                                              mainAxisAlignment:
-                                                                  MainAxisAlignment
-                                                                      .spaceEvenly,
+                                                          Visibility(
+                                                            visible:
+                                                                classicTemp,
+                                                            child: Column(
                                                               children: [
-                                                                Row(
-                                                                  children: [
-                                                                    InkWell(
-                                                                      child:
-                                                                          Container(
-                                                                        width:
-                                                                            40,
-                                                                        height:
-                                                                            40,
-                                                                        color: Colors
-                                                                            .purple,
-                                                                        child:
-                                                                            ColorButton(
-                                                                          key: Key(
-                                                                              'c2'),
-                                                                          color:
-                                                                              squarecolors[0],
-                                                                          config:
-                                                                              ColorPickerConfig(enableEyePicker: true),
-                                                                          size:
-                                                                              32,
-                                                                          elevation:
-                                                                              5,
-                                                                          boxShape:
-                                                                              BoxShape.rectangle,
-                                                                          // default : circle
+                                                                Center(
+                                                                  child: Row(
+                                                                    mainAxisAlignment:
+                                                                        MainAxisAlignment
+                                                                            .spaceEvenly,
+                                                                    children: [
+                                                                      Row(
+                                                                        children: [
+                                                                          InkWell(
+                                                                            child:
+                                                                                Container(
+                                                                              width: 40,
+                                                                              height: 40,
+                                                                              color: Colors.purple,
+                                                                              child: ColorButton(
+                                                                                key: Key('c2'),
+                                                                                color: squarecolors[0],
+                                                                                config: ColorPickerConfig(enableEyePicker: true),
+                                                                                size: 32,
+                                                                                elevation: 5,
+                                                                                boxShape: BoxShape.rectangle,
+                                                                                // default : circle
 
-                                                                          onColorChanged: (value) =>
-                                                                              setState(() => squarecolors[0] = value),
-                                                                        ),
-                                                                      ),
-                                                                      onTap:
-                                                                          () {},
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width: 5,
-                                                                    ),
-                                                                    InkWell(
-                                                                      child:
-                                                                          Container(
-                                                                        width:
-                                                                            40,
-                                                                        height:
-                                                                            40,
-                                                                        color: Colors
-                                                                            .purple,
-                                                                        child:
-                                                                            ColorButton(
-                                                                          key: Key(
-                                                                              'c2'),
-                                                                          color:
-                                                                              squarecolors[1],
-                                                                          config:
-                                                                              ColorPickerConfig(enableEyePicker: true),
-                                                                          size:
-                                                                              32,
-                                                                          elevation:
-                                                                              5,
-                                                                          boxShape:
-                                                                              BoxShape.rectangle,
-                                                                          // default : circle
+                                                                                onColorChanged: (value) => setState(() => squarecolors[0] = value),
+                                                                              ),
+                                                                            ),
+                                                                            onTap:
+                                                                                () {},
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                5,
+                                                                          ),
+                                                                          InkWell(
+                                                                            child:
+                                                                                Container(
+                                                                              width: 40,
+                                                                              height: 40,
+                                                                              color: Colors.purple,
+                                                                              child: ColorButton(
+                                                                                key: Key('c2'),
+                                                                                color: squarecolors[1],
+                                                                                config: ColorPickerConfig(enableEyePicker: true),
+                                                                                size: 32,
+                                                                                elevation: 5,
+                                                                                boxShape: BoxShape.rectangle,
+                                                                                // default : circle
 
-                                                                          onColorChanged: (value) =>
-                                                                              setState(() => squarecolors[1] = value),
-                                                                        ),
-                                                                      ),
-                                                                      onTap:
-                                                                          () {},
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width: 5,
-                                                                    ),
-                                                                    InkWell(
-                                                                      child:
-                                                                          Container(
-                                                                        width:
-                                                                            40,
-                                                                        height:
-                                                                            40,
-                                                                        color: Colors
-                                                                            .purple,
-                                                                        child:
-                                                                            ColorButton(
-                                                                          key: Key(
-                                                                              'c2'),
-                                                                          color:
-                                                                              squarecolors[2],
-                                                                          config:
-                                                                              ColorPickerConfig(enableEyePicker: true),
-                                                                          size:
-                                                                              32,
-                                                                          elevation:
-                                                                              5,
-                                                                          boxShape:
-                                                                              BoxShape.rectangle,
-                                                                          // default : circle
+                                                                                onColorChanged: (value) => setState(() => squarecolors[1] = value),
+                                                                              ),
+                                                                            ),
+                                                                            onTap:
+                                                                                () {},
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                5,
+                                                                          ),
+                                                                          InkWell(
+                                                                            child:
+                                                                                Container(
+                                                                              width: 40,
+                                                                              height: 40,
+                                                                              color: Colors.purple,
+                                                                              child: ColorButton(
+                                                                                key: Key('c2'),
+                                                                                color: squarecolors[2],
+                                                                                config: ColorPickerConfig(enableEyePicker: true),
+                                                                                size: 32,
+                                                                                elevation: 5,
+                                                                                boxShape: BoxShape.rectangle,
+                                                                                // default : circle
 
-                                                                          onColorChanged: (value) =>
-                                                                              setState(() => squarecolors[2] = value),
-                                                                        ),
-                                                                      ),
-                                                                      onTap:
-                                                                          () {},
-                                                                    ),
-                                                                    SizedBox(
-                                                                      width: 5,
-                                                                    ),
-                                                                    InkWell(
-                                                                      child:
-                                                                          Container(
-                                                                        width:
-                                                                            40,
-                                                                        height:
-                                                                            40,
-                                                                        color: Colors
-                                                                            .purple,
-                                                                        child:
-                                                                            ColorButton(
-                                                                          key: Key(
-                                                                              'c2'),
-                                                                          color:
-                                                                              squarecolors[3],
-                                                                          config:
-                                                                              ColorPickerConfig(enableEyePicker: true),
-                                                                          size:
-                                                                              32,
-                                                                          elevation:
-                                                                              5,
-                                                                          boxShape:
-                                                                              BoxShape.rectangle,
-                                                                          // default : circle
+                                                                                onColorChanged: (value) => setState(() => squarecolors[2] = value),
+                                                                              ),
+                                                                            ),
+                                                                            onTap:
+                                                                                () {},
+                                                                          ),
+                                                                          SizedBox(
+                                                                            width:
+                                                                                5,
+                                                                          ),
+                                                                          InkWell(
+                                                                            child:
+                                                                                Container(
+                                                                              width: 40,
+                                                                              height: 40,
+                                                                              color: Colors.purple,
+                                                                              child: ColorButton(
+                                                                                key: Key('c2'),
+                                                                                color: squarecolors[3],
+                                                                                config: ColorPickerConfig(enableEyePicker: true),
+                                                                                size: 32,
+                                                                                elevation: 5,
+                                                                                boxShape: BoxShape.rectangle,
+                                                                                // default : circle
 
-                                                                          onColorChanged: (value) =>
-                                                                              setState(() => squarecolors[3] = value),
-                                                                        ),
-                                                                      ),
-                                                                      onTap:
-                                                                          () {},
-                                                                    ),
-                                                                  ],
-                                                                )
+                                                                                onColorChanged: (value) => setState(() => squarecolors[3] = value),
+                                                                              ),
+                                                                            ),
+                                                                            onTap:
+                                                                                () {},
+                                                                          ),
+                                                                        ],
+                                                                      )
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                Text(
+                                                                  "Color Blocks",
+                                                                  style: TextStyle(
+                                                                      fontFamily:
+                                                                          'Schyler',
+                                                                      fontSize:
+                                                                          14),
+                                                                ),
                                                               ],
                                                             ),
                                                           ),
-                                                          Text(
-                                                            "Color Blocks",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'Schyler',
-                                                                fontSize: 14),
+                                                          Visibility(
+                                                            visible: newTemp,
+                                                            child: Column(
+                                                              children: [
+                                                                Text(
+                                                                  "Match Border Color To",
+                                                                  style: TextStyle(
+                                                                      fontFamily:
+                                                                          'Schyler',
+                                                                      fontSize:
+                                                                          14),
+                                                                ),
+                                                                Center(
+                                                                  child: Row(
+                                                                    children: [
+                                                                      Expanded(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              InkWell(
+                                                                            onTap:
+                                                                                () {
+                                                                              setState(() {
+                                                                                matchPoster = true;
+                                                                              });
+                                                                            },
+                                                                            child:
+                                                                                Container(
+                                                                              height: 40,
+                                                                              decoration: BoxDecoration(
+                                                                                  border: Border.all(
+                                                                                    width: matchPoster ? 2 : 1,
+                                                                                    color: matchPoster ? Colors.green : Colors.black,
+                                                                                  ),
+                                                                                  borderRadius: BorderRadius.circular(30),
+                                                                                  boxShadow: const [
+                                                                                    BoxShadow(
+                                                                                      color: Colors.black12,
+                                                                                      spreadRadius: 2,
+                                                                                      blurRadius: 15,
+                                                                                      offset: Offset(1, 5), // changes position of shadow
+                                                                                    ),
+                                                                                  ],
+                                                                                  color: matchPoster ? Colors.white24 : Color(0xBEE0E0E0)),
+                                                                              child: Padding(
+                                                                                padding: const EdgeInsets.all(10.0),
+                                                                                child: Center(
+                                                                                  child: Text(
+                                                                                    "Poster Color",
+                                                                                    style: TextStyle(fontFamily: 'Schyler', fontSize: 15),
+                                                                                    // Handles long text
+                                                                                    softWrap: true,
+
+                                                                                    // Allows wrapping
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                      Expanded(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              InkWell(
+                                                                            onTap:
+                                                                                () {
+                                                                              setState(() {
+                                                                                matchPoster = false;
+                                                                              });
+                                                                            },
+                                                                            child:
+                                                                                Container(
+                                                                              height: 40,
+                                                                              decoration: BoxDecoration(
+                                                                                  border: Border.all(
+                                                                                    width: matchPoster ? 1 : 2,
+                                                                                    color: matchPoster ? Colors.black : Colors.green,
+                                                                                  ),
+                                                                                  borderRadius: BorderRadius.circular(30),
+                                                                                  boxShadow: const [
+                                                                                    BoxShadow(
+                                                                                      color: Colors.black12,
+                                                                                      spreadRadius: 2,
+                                                                                      blurRadius: 15,
+                                                                                      offset: Offset(1, 5), // changes position of shadow
+                                                                                    ),
+                                                                                  ],
+                                                                                  color: matchPoster ? Color(0xBEE0E0E0) : Colors.white24),
+                                                                              child: Padding(
+                                                                                padding: const EdgeInsets.all(10.0),
+                                                                                child: Center(
+                                                                                  child: Text(
+                                                                                    "Text Color",
+                                                                                    style: TextStyle(fontFamily: 'Schyler', fontSize: 15),
+                                                                                    // Handles long text
+                                                                                    softWrap: true,
+
+                                                                                    // Allows wrapping
+                                                                                  ),
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
                                                           ),
                                                         ],
                                                       ),
@@ -4460,181 +6804,37 @@ class _SpotState extends State<Spot> {
                                           ),
                                           child: SingleChildScrollView(
                                             controller: yourScrollController,
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.all(16.0),
-                                              child: Wrap(
-                                                runSpacing: 8.0,
-                                                spacing: MediaQuery.of(context)
-                                                        .size
-                                                        .width /
-                                                    80,
-                                                children: [
-                                                  Container(
-                                                    width: 250,
-                                                    height: 40,
-                                                    decoration: BoxDecoration(
-                                                        border: Border.all(
-                                                          width: 1.3,
-                                                        ),
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(30),
-                                                        boxShadow: const [
-                                                          BoxShadow(
-                                                            color:
-                                                                Colors.black12,
-                                                            spreadRadius: 2,
-                                                            blurRadius: 15,
-                                                            offset: Offset(1,
-                                                                5), // changes position of shadow
-                                                          ),
-                                                        ],
-                                                        color:
-                                                            Color(0xBEF3F3F3)),
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              10.0),
-                                                      child:
-                                                          Transform.translate(
-                                                        offset: Offset(0, -3),
-                                                        child: TextFormField(
-                                                          controller:
-                                                              _textController,
-                                                          decoration:
-                                                              InputDecoration(
-                                                            hintText:
-                                                                'Enter Spotify Album ID Here',
-                                                            border: InputBorder
-                                                                .none,
-                                                            isDense: true,
-                                                          ),
-                                                          autofocus: true,
-                                                          onFieldSubmitted:
-                                                              (value) {
-                                                            getAlbum(value);
-                                                          },
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () async {
-                                                      getAlbum(
-                                                          _textController.text);
-                                                    },
-                                                    child: Container(
-                                                      width: 150,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                              width: 2.0,
-                                                              color: Color(
-                                                                  0xBE504C46)),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                          boxShadow: const [
-                                                            BoxShadow(
-                                                              color: Colors
-                                                                  .black12,
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
-                                                            ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBED7CDC5)),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(10.0),
-                                                        child: Center(
-                                                          child: Text(
-                                                            "Create Poster",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'Schyler',
-                                                                fontSize: 15),
-                                                            // Handles long text
-                                                            softWrap: true,
-
-                                                            // Allows wrapping
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () async {
-                                                      setState(() {
-                                                        contentEdit = true;
-                                                      });
-                                                    },
-                                                    child: Container(
-                                                      width: 150,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                              width: 2.0,
-                                                              color: Color(
-                                                                  0xBE504C46)),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                          boxShadow: const [
-                                                            BoxShadow(
-                                                              color: Colors
-                                                                  .black12,
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
-                                                            ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBED7CDC5)),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(10.0),
-                                                        child: Center(
-                                                          child: Text(
-                                                            "Edit Content",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'Schyler',
-                                                                fontSize: 15),
-                                                            // Handles long text
-                                                            softWrap: true,
-
-                                                            // Allows wrapping
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: !visibile2,
-                                                    child: InkWell(
-                                                      onTap: () async {
-                                                        setState(() {
-                                                          visibile2 = true;
-                                                        });
-                                                      },
-                                                      child: Container(
-                                                        width: 110,
+                                            child: Column(
+                                              children: [
+                                                Visibility(
+                                                  child: Text(
+                                                      "Full Tracklist Not Showing? Reduce Song Height or Add Tracklist Rows",
+                                                      style: TextStyle(
+                                                          fontFamily: 'Schyler',
+                                                          fontSize: 10,
+                                                          color:
+                                                              Colors.black54)),
+                                                  visible: newTemp,
+                                                ),
+                                                Padding(
+                                                  padding: const EdgeInsets.all(
+                                                      16.0),
+                                                  child: Wrap(
+                                                    runSpacing: 8.0,
+                                                    spacing:
+                                                        MediaQuery.of(context)
+                                                                .size
+                                                                .width /
+                                                            80,
+                                                    children: [
+                                                      Container(
+                                                        width: 250,
                                                         height: 40,
                                                         decoration:
                                                             BoxDecoration(
                                                                 border:
                                                                     Border.all(
-                                                                  width: hoverstatus ==
-                                                                          false
-                                                                      ? 1.3
-                                                                      : 1.9,
+                                                                  width: 1.3,
                                                                 ),
                                                                 borderRadius:
                                                                     BorderRadius
@@ -4654,41 +6854,518 @@ class _SpotState extends State<Spot> {
                                                                   ),
                                                                 ],
                                                                 color: Color(
-                                                                    0xBEE0E0E0)),
+                                                                    0xBEF3F3F3)),
                                                         child: Padding(
                                                           padding:
                                                               const EdgeInsets
                                                                   .all(10.0),
-                                                          child: Center(
-                                                            child: Text(
-                                                              "Tutorial",
-                                                              style: TextStyle(
-                                                                  fontFamily:
-                                                                      'Schyler',
-                                                                  fontSize: 15),
-                                                              // Handles long text
-                                                              softWrap: true,
-
-                                                              // Allows wrapping
+                                                          child: Transform
+                                                              .translate(
+                                                            offset:
+                                                                Offset(0, -3),
+                                                            child:
+                                                                TextFormField(
+                                                              controller:
+                                                                  _textController,
+                                                              decoration:
+                                                                  InputDecoration(
+                                                                hintText:
+                                                                    'Enter Spotify Album ID Here',
+                                                                border:
+                                                                    InputBorder
+                                                                        .none,
+                                                                isDense: true,
+                                                              ),
+                                                              autofocus: true,
+                                                              onFieldSubmitted:
+                                                                  (value) {
+                                                                getAlbum(value);
+                                                              },
                                                             ),
                                                           ),
                                                         ),
                                                       ),
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: classicTemp,
-                                                    child: Visibility(
-                                                      visible: !visibile2,
-                                                      child: InkWell(
+                                                      InkWell(
+                                                        onTap: () async {
+                                                          getAlbum(
+                                                              _textController
+                                                                  .text);
+                                                        },
+                                                        child: Container(
+                                                          width: 150,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border.all(
+                                                                      width:
+                                                                          2.0,
+                                                                      color: Color(
+                                                                          0xBE504C46)),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              30),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors
+                                                                          .black12,
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBED7CDC5)),
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(10.0),
+                                                            child: Center(
+                                                              child: Text(
+                                                                "Create Poster",
+                                                                style: TextStyle(
+                                                                    fontFamily:
+                                                                        'Schyler',
+                                                                    fontSize:
+                                                                        15),
+                                                                // Handles long text
+                                                                softWrap: true,
+
+                                                                // Allows wrapping
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      InkWell(
                                                         onTap: () async {
                                                           setState(() {
-                                                            setView = "Size";
-                                                            colorSetting = true;
+                                                            contentEdit = true;
                                                           });
                                                         },
                                                         child: Container(
-                                                          width: 110,
+                                                          width: 150,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border.all(
+                                                                      width:
+                                                                          2.0,
+                                                                      color: Color(
+                                                                          0xBE504C46)),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              30),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors
+                                                                          .black12,
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBED7CDC5)),
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(10.0),
+                                                            child: Center(
+                                                              child: Text(
+                                                                "Edit Content",
+                                                                style: TextStyle(
+                                                                    fontFamily:
+                                                                        'Schyler',
+                                                                    fontSize:
+                                                                        15),
+                                                                // Handles long text
+                                                                softWrap: true,
+
+                                                                // Allows wrapping
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      InkWell(
+                                                        onTap: () async {
+                                                          setState(() {
+                                                            setView =
+                                                                "Perspective";
+                                                            colorSetting = true;
+                                                            viewinroon = true;
+                                                          });
+                                                        },
+                                                        child: Container(
+                                                          width: 150,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border.all(
+                                                                      width:
+                                                                          3.0,
+                                                                      color: Color(
+                                                                          0xBE504C46)),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              30),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors
+                                                                          .black12,
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBE94D8C6)),
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(0.0),
+                                                            child: Center(
+                                                              child: Text(
+                                                                "View Poster In Room",
+                                                                style: TextStyle(
+                                                                    fontFamily:
+                                                                        'TempBold',
+                                                                    fontSize:
+                                                                        15),
+                                                                // Handles long text
+                                                                softWrap: true,
+
+                                                                // Allows wrapping
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: !visibile2,
+                                                        child: InkWell(
+                                                          onTap: () async {
+                                                            setState(() {
+                                                              visibile2 = true;
+                                                            });
+                                                          },
+                                                          child: Container(
+                                                            width: 110,
+                                                            height: 40,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                    border:
+                                                                        Border
+                                                                            .all(
+                                                                      width: hoverstatus ==
+                                                                              false
+                                                                          ? 1.3
+                                                                          : 1.9,
+                                                                    ),
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                            30),
+                                                                    boxShadow: const [
+                                                                      BoxShadow(
+                                                                        color: Colors
+                                                                            .black12,
+                                                                        spreadRadius:
+                                                                            2,
+                                                                        blurRadius:
+                                                                            15,
+                                                                        offset: Offset(
+                                                                            1,
+                                                                            5), // changes position of shadow
+                                                                      ),
+                                                                    ],
+                                                                    color: Color(
+                                                                        0xBEE0E0E0)),
+                                                            child: Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(
+                                                                      10.0),
+                                                              child: Center(
+                                                                child: Text(
+                                                                  "Tutorial",
+                                                                  style: TextStyle(
+                                                                      fontFamily:
+                                                                          'Schyler',
+                                                                      fontSize:
+                                                                          15),
+                                                                  // Handles long text
+                                                                  softWrap:
+                                                                      true,
+
+                                                                  // Allows wrapping
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: classicTemp,
+                                                        child: Visibility(
+                                                          visible: !visibile2,
+                                                          child: InkWell(
+                                                            onTap: () async {
+                                                              setState(() {
+                                                                setView =
+                                                                    "Size";
+                                                                colorSetting =
+                                                                    true;
+                                                              });
+                                                            },
+                                                            child: Container(
+                                                              width: 110,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width: hoverstatus ==
+                                                                                false
+                                                                            ? 1.3
+                                                                            : 1.9,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              10),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEE0E0E0)),
+                                                              child: Padding(
+                                                                padding:
+                                                                    const EdgeInsets
+                                                                        .all(
+                                                                        10.0),
+                                                                child: Center(
+                                                                  child: Text(
+                                                                    "Poster Size",
+                                                                    style: TextStyle(
+                                                                        fontFamily:
+                                                                            'Schyler',
+                                                                        fontSize:
+                                                                            15),
+                                                                    // Handles long text
+                                                                    softWrap:
+                                                                        true,
+
+                                                                    // Allows wrapping
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      InkWell(
+                                                        onTap: () {
+                                                          setState(() {
+                                                            setView = "Color";
+                                                          });
+                                                          if (colorSetting ==
+                                                              true) {
+                                                            setState(() {
+                                                              colorSetting =
+                                                                  false;
+                                                              connected = true;
+                                                            });
+                                                          } else {
+                                                            setState(() {
+                                                              colorSetting =
+                                                                  true;
+                                                              connected = false;
+                                                            });
+                                                          }
+                                                          FirebaseAnalytics
+                                                              .instance
+                                                              .logEvent(
+                                                            name:
+                                                                'postercolorpressed',
+                                                          );
+                                                          print("logged color");
+                                                        },
+                                                        child:
+                                                            AnimatedContainer(
+                                                          duration:
+                                                              const Duration(
+                                                                  milliseconds:
+                                                                      500),
+                                                          curve: Curves
+                                                              .fastOutSlowIn,
+                                                          width:
+                                                              hasAlbum == false
+                                                                  ? 120
+                                                                  : 150,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border
+                                                                      .all(
+                                                                    width: hasAlbum ==
+                                                                            false
+                                                                        ? 1.3
+                                                                        : 3,
+                                                                    color: hasAlbum ==
+                                                                            false
+                                                                        ? Colors
+                                                                            .black
+                                                                        : Color(
+                                                                            0xFF277A1D),
+                                                                  ),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                    hasAlbum ==
+                                                                            false
+                                                                        ? 25
+                                                                        : 30,
+                                                                  ),
+                                                                  boxShadow: [
+                                                                    BoxShadow(
+                                                                      color: hasAlbum ==
+                                                                              false
+                                                                          ? Colors
+                                                                              .black38
+                                                                          : Color(
+                                                                              0x56277A1D),
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBEE0E0E0)),
+                                                          child: ClipRRect(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        30),
+                                                            child: Stack(
+                                                              children: [
+                                                                Row(children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Container(
+                                                                    color: Color(
+                                                                        0x44FF8800),
+                                                                  )),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Container(
+                                                                    color: Color(
+                                                                        0x884EB01C),
+                                                                  )),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Container(
+                                                                    color: Color(
+                                                                        0xBE5471AF),
+                                                                  ))
+                                                                ]),
+                                                                Padding(
+                                                                  padding:
+                                                                      const EdgeInsets
+                                                                          .all(
+                                                                          1),
+                                                                  child: Center(
+                                                                    child: Text(
+                                                                      "Poster Color",
+                                                                      style: TextStyle(
+                                                                          fontFamily: 'Schyler',
+                                                                          shadows: [
+                                                                            Shadow(
+                                                                              blurRadius: 10.0, // shadow blur
+                                                                              color: Colors.black26, // shadow color
+                                                                              offset: Offset(2.0, 2.0), // how much shadow will be shown
+                                                                            ),
+                                                                          ],
+                                                                          color: Colors.white,
+                                                                          fontSize: 14),
+                                                                      // Handles long text
+                                                                      softWrap:
+                                                                          true,
+
+                                                                      // Allows wrapping
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      InkWell(
+                                                        onTap: () async {
+                                                          try {
+                                                            // Capture the screenshot
+                                                            final image =
+                                                                await screenshotController
+                                                                    .capture();
+
+                                                            if (image != null) {
+                                                              // Convert to base64 and create a downloadable link
+                                                              final base64Image =
+                                                                  base64Encode(
+                                                                      image);
+                                                              final anchor =
+                                                                  AnchorElement(
+                                                                      href:
+                                                                          'data:application/octet-stream;base64,$base64Image')
+                                                                    ..download =
+                                                                        "SpotifyPoster.png" // Name of the downloaded file
+                                                                    ..target =
+                                                                        'blank';
+
+                                                              // Append the anchor to the document and simulate a click
+                                                              document.body!
+                                                                  .append(
+                                                                      anchor);
+                                                              anchor.click();
+                                                              anchor
+                                                                  .remove(); // Clean up after the click
+                                                            }
+                                                          } catch (e) {
+                                                            print(
+                                                                "Error capturing or downloading the image: $e");
+                                                          }
+                                                        },
+                                                        child: Container(
+                                                          width: 120,
                                                           height: 40,
                                                           decoration:
                                                               BoxDecoration(
@@ -4702,7 +7379,7 @@ class _SpotState extends State<Spot> {
                                                                   borderRadius:
                                                                       BorderRadius
                                                                           .circular(
-                                                                              10),
+                                                                              30),
                                                                   boxShadow: const [
                                                                     BoxShadow(
                                                                       color: Colors
@@ -4723,13 +7400,1216 @@ class _SpotState extends State<Spot> {
                                                                 const EdgeInsets
                                                                     .all(10.0),
                                                             child: Center(
+                                                              child: Row(
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .spaceBetween,
+                                                                children: [
+                                                                  SizedBox(
+                                                                    width: 2,
+                                                                  ),
+                                                                  Text(
+                                                                    "Save Poster",
+                                                                    style: TextStyle(
+                                                                        fontFamily:
+                                                                            'Schyler',
+                                                                        fontSize:
+                                                                            13),
+                                                                    // Handles long text
+                                                                    softWrap:
+                                                                        true,
+
+                                                                    // Allows wrapping
+                                                                  ),
+                                                                  SizedBox(
+                                                                    width: 2,
+                                                                  ),
+                                                                  Icon(
+                                                                    Icons
+                                                                        .save_alt,
+                                                                    color: Colors
+                                                                        .black,
+                                                                    size: 13.0,
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: classicTemp,
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              width: 140,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width:
+                                                                            1.3,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              30),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEF3F3F3)),
+                                                              child: Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (albumsizeused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'album_title_size_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          albumsizeused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          albumsize = (albumsize - 15).clamp(
+                                                                              20,
+                                                                              400);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "-",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (albumsizeused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'album_title_size_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          albumsizeused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          albumsize = (albumsize + 15).clamp(
+                                                                              20,
+                                                                              500);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "+",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              height: 5,
+                                                            ),
+                                                            Text(
+                                                              "Album Title Size",
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Schyler',
+                                                                  fontSize: 10),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: classicTemp,
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              width: 140,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width:
+                                                                            1.3,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              30),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEF3F3F3)),
+                                                              child: Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          textheight = (textheight - 5).clamp(
+                                                                              0,
+                                                                              3000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "-",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          textheight = (textheight + 5).clamp(
+                                                                              0,
+                                                                              3000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "+",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              height: 5,
+                                                            ),
+                                                            Text(
+                                                              "Song Height",
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Schyler',
+                                                                  fontSize: 10),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: newTemp,
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              width: 140,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width:
+                                                                            1.3,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              30),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEF3F3F3)),
+                                                              child: Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          Newtextheight = (Newtextheight - 3).clamp(
+                                                                              0,
+                                                                              3000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "-",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(Newtextheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          Newtextheight = (Newtextheight + 3).clamp(
+                                                                              0,
+                                                                              3000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "+",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              height: 5,
+                                                            ),
+                                                            Text(
+                                                              "Song Height",
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Schyler',
+                                                                  fontSize: 10),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: newTemp,
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              width: 140,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width:
+                                                                            1.3,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              30),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEF3F3F3)),
+                                                              child: Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          posterrows = (posterrows - 1).clamp(
+                                                                              1,
+                                                                              4);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "-",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(Newtextheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          posterrows = (posterrows + 1).clamp(
+                                                                              1,
+                                                                              4);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "+",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              height: 5,
+                                                            ),
+                                                            Text(
+                                                              "Tracklist Rows",
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Schyler',
+                                                                  fontSize: 10),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: classicTemp,
+                                                        child: Column(
+                                                          children: [
+                                                            Container(
+                                                              width: 140,
+                                                              height: 40,
+                                                              decoration:
+                                                                  BoxDecoration(
+                                                                      border:
+                                                                          Border
+                                                                              .all(
+                                                                        width:
+                                                                            1.3,
+                                                                      ),
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              30),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                              Colors.black12,
+                                                                          spreadRadius:
+                                                                              2,
+                                                                          blurRadius:
+                                                                              15,
+                                                                          offset: Offset(
+                                                                              1,
+                                                                              5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(
+                                                                          0xBEF3F3F3)),
+                                                              child: Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textwidthused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_width_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          textwidthused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight.toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                            () {
+                                                                          textwidth = (textwidth - 30).clamp(
+                                                                              70,
+                                                                              1250);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "-",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // SliderTheme(
+                                                                  //   data: SliderThemeData(
+                                                                  //     overlayColor: Colors
+                                                                  //         .transparent,
+                                                                  //     thumbColor:
+                                                                  //         Colors.grey,
+                                                                  //     activeTrackColor:
+                                                                  //         Colors.black,
+                                                                  //     inactiveTrackColor:
+                                                                  //         Colors.black12,
+                                                                  //   ),
+                                                                  //   child: Slider(
+                                                                  //     value: textwidth,
+                                                                  //     min: 100,
+                                                                  //     max: 250,
+                                                                  //     divisions: 400,
+                                                                  //     onChanged:
+                                                                  //         (double value) {
+                                                                  //       setState(() {
+                                                                  //         textwidth = value;
+                                                                  //       });
+                                                                  //     },
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child:
+                                                                        InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textwidthused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_width_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(
+                                                                            () {
+                                                                          textwidthused =
+                                                                              true;
+                                                                        });
+                                                                        print(textwidth.toString() +
+                                                                            ": textwidth");
+                                                                        setState(
+                                                                            () {
+                                                                          textwidth = (textwidth + 30).clamp(
+                                                                              70,
+                                                                              13000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height:
+                                                                            30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Text(
+                                                                            "+",
+                                                                            style:
+                                                                                TextStyle(fontFamily: 'Schyler', fontSize: 20),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false ? 1.3 : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color: Colors.black12,
+                                                                                spreadRadius: 2,
+                                                                                blurRadius: 15,
+                                                                                offset: Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            SizedBox(
+                                                              height: 5,
+                                                            ),
+                                                            Text(
+                                                              "Song Width",
+                                                              style: TextStyle(
+                                                                  fontFamily:
+                                                                      'Schyler',
+                                                                  fontSize: 10),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+
+                                                      // InkWell(
+                                                      //   onTap: () async {
+                                                      //     setState(() {
+                                                      //       visibile2 = true;
+                                                      //     });
+                                                      //   },
+                                                      //   child: Container(
+                                                      //     width: 40,
+                                                      //     height: 40,
+                                                      //     decoration: BoxDecoration(
+                                                      //         border: Border.all(
+                                                      //           width: hoverstatus ==
+                                                      //                   false
+                                                      //               ? 1.3
+                                                      //               : 1.9,
+                                                      //         ),
+                                                      //         borderRadius:
+                                                      //             BorderRadius
+                                                      //                 .circular(30),
+                                                      //         boxShadow: const [
+                                                      //           BoxShadow(
+                                                      //             color:
+                                                      //                 Colors.black12,
+                                                      //             spreadRadius: 2,
+                                                      //             blurRadius: 15,
+                                                      //             offset: Offset(1,
+                                                      //                 5), // changes position of shadow
+                                                      //           ),
+                                                      //         ],
+                                                      //         color:
+                                                      //             Color(0xBEE0E0E0)),
+                                                      //     child: Center(
+                                                      //         child: IconButton(
+                                                      //       onPressed:
+                                                      //           _launchtiktokUrl,
+                                                      //       icon: FaIcon(
+                                                      //           FontAwesomeIcons
+                                                      //               .tiktok),
+                                                      //       iconSize: 20,
+                                                      //       color: Colors.black,
+                                                      //     )),
+                                                      //   ),
+                                                      // ),
+                                                      // InkWell(
+                                                      //   onTap: () async {
+                                                      //     setState(() {
+                                                      //       visibile2 = true;
+                                                      //     });
+                                                      //   },
+                                                      //   child: Container(
+                                                      //     width: 40,
+                                                      //     height: 40,
+                                                      //     decoration: BoxDecoration(
+                                                      //         border: Border.all(
+                                                      //           width: hoverstatus ==
+                                                      //                   false
+                                                      //               ? 1.3
+                                                      //               : 1.9,
+                                                      //         ),
+                                                      //         borderRadius:
+                                                      //             BorderRadius
+                                                      //                 .circular(30),
+                                                      //         boxShadow: const [
+                                                      //           BoxShadow(
+                                                      //             color:
+                                                      //                 Colors.black12,
+                                                      //             spreadRadius: 2,
+                                                      //             blurRadius: 15,
+                                                      //             offset: Offset(1,
+                                                      //                 5), // changes position of shadow
+                                                      //           ),
+                                                      //         ],
+                                                      //         color:
+                                                      //             Color(0xBEE0E0E0)),
+                                                      //     child: Center(
+                                                      //         child: IconButton(
+                                                      //       onPressed:
+                                                      //           _launchinstagramUrl,
+                                                      //       icon: FaIcon(
+                                                      //           FontAwesomeIcons
+                                                      //               .instagram),
+                                                      //       iconSize: 20,
+                                                      //       color: Colors.black,
+                                                      //     )),
+                                                      //   ),
+                                                      // ),
+                                                      InkWell(
+                                                        onTap: () async {
+                                                          setState(() {
+                                                            if (textShadow ==
+                                                                true) {
+                                                              textShadow =
+                                                                  false;
+                                                            } else {
+                                                              textShadow = true;
+                                                            }
+                                                          });
+                                                        },
+                                                        child: Container(
+                                                          width: 120,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border
+                                                                      .all(
+                                                                    width: hoverstatus ==
+                                                                            false
+                                                                        ? 1.3
+                                                                        : 1.9,
+                                                                  ),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              30),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors
+                                                                          .black12,
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBEE0E0E0)),
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(1.0),
+                                                            child: Center(
                                                               child: Text(
-                                                                "Poster Size",
+                                                                "Shadow On/Off",
                                                                 style: TextStyle(
                                                                     fontFamily:
                                                                         'Schyler',
                                                                     fontSize:
-                                                                        15),
+                                                                        10),
                                                                 // Handles long text
                                                                 softWrap: true,
 
@@ -4739,124 +8619,129 @@ class _SpotState extends State<Spot> {
                                                           ),
                                                         ),
                                                       ),
-                                                    ),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () {
-                                                      setState(() {
-                                                        setView = "Color";
-                                                      });
-                                                      if (colorSetting ==
-                                                          true) {
-                                                        setState(() {
-                                                          colorSetting = false;
-                                                          connected = true;
-                                                        });
-                                                      } else {
-                                                        setState(() {
-                                                          colorSetting = true;
-                                                          connected = false;
-                                                        });
-                                                      }
-                                                      FirebaseAnalytics.instance
-                                                          .logEvent(
-                                                        name:
-                                                            'postercolorpressed',
-                                                      );
-                                                      print("logged color");
-                                                    },
-                                                    child: AnimatedContainer(
-                                                      duration: const Duration(
-                                                          milliseconds: 500),
-                                                      curve:
-                                                          Curves.fastOutSlowIn,
-                                                      width: hasAlbum == false
-                                                          ? 120
-                                                          : 150,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                            width: hasAlbum ==
-                                                                    false
-                                                                ? 1.3
-                                                                : 3,
-                                                            color: hasAlbum ==
-                                                                    false
-                                                                ? Colors.black
-                                                                : Color(
-                                                                    0xFF277A1D),
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                            hasAlbum == false
-                                                                ? 25
-                                                                : 30,
-                                                          ),
-                                                          boxShadow: [
-                                                            BoxShadow(
-                                                              color: hasAlbum ==
-                                                                      false
-                                                                  ? Colors
-                                                                      .black38
-                                                                  : Color(
-                                                                      0x56277A1D),
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
+                                                      InkWell(
+                                                        onTap: () async {
+                                                          setState(() {
+                                                            if (coverborder ==
+                                                                true) {
+                                                              coverborder =
+                                                                  false;
+                                                            } else {
+                                                              coverborder =
+                                                                  true;
+                                                            }
+                                                          });
+                                                        },
+                                                        child: Container(
+                                                          width: 120,
+                                                          height: 40,
+                                                          decoration:
+                                                              BoxDecoration(
+                                                                  border: Border
+                                                                      .all(
+                                                                    width: hoverstatus ==
+                                                                            false
+                                                                        ? 1.3
+                                                                        : 1.9,
+                                                                  ),
+                                                                  borderRadius:
+                                                                      BorderRadius
+                                                                          .circular(
+                                                                              30),
+                                                                  boxShadow: const [
+                                                                    BoxShadow(
+                                                                      color: Colors
+                                                                          .black12,
+                                                                      spreadRadius:
+                                                                          2,
+                                                                      blurRadius:
+                                                                          15,
+                                                                      offset: Offset(
+                                                                          1,
+                                                                          5), // changes position of shadow
+                                                                    ),
+                                                                  ],
+                                                                  color: Color(
+                                                                      0xBEE0E0E0)),
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(1.0),
+                                                            child: Center(
+                                                              child: Text(
+                                                                "Cover Border On/Off",
+                                                                style: TextStyle(
+                                                                    fontFamily:
+                                                                        'Schyler',
+                                                                    fontSize:
+                                                                        10),
+                                                                // Handles long text
+                                                                softWrap: true,
+
+                                                                // Allows wrapping
+                                                              ),
                                                             ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBEE0E0E0)),
-                                                      child: ClipRRect(
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(30),
-                                                        child: Stack(
-                                                          children: [
-                                                            Row(children: [
-                                                              Expanded(
-                                                                  child:
-                                                                      Container(
-                                                                color: Color(
-                                                                    0x44FF8800),
-                                                              )),
-                                                              Expanded(
-                                                                  child:
-                                                                      Container(
-                                                                color: Color(
-                                                                    0x884EB01C),
-                                                              )),
-                                                              Expanded(
-                                                                  child:
-                                                                      Container(
-                                                                color: Color(
-                                                                    0xBE5471AF),
-                                                              ))
-                                                            ]),
-                                                            Padding(
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Visibility(
+                                                        visible: classicTemp,
+                                                        child: InkWell(
+                                                          onTap: () async {
+                                                            setState(() {
+                                                              if (showsquare ==
+                                                                  true) {
+                                                                showsquare =
+                                                                    false;
+                                                              } else {
+                                                                showsquare =
+                                                                    true;
+                                                              }
+                                                            });
+                                                          },
+                                                          child: Container(
+                                                            width: 120,
+                                                            height: 40,
+                                                            decoration:
+                                                                BoxDecoration(
+                                                                    border:
+                                                                        Border
+                                                                            .all(
+                                                                      width: hoverstatus ==
+                                                                              false
+                                                                          ? 1.3
+                                                                          : 1.9,
+                                                                    ),
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                            30),
+                                                                    boxShadow: const [
+                                                                      BoxShadow(
+                                                                        color: Colors
+                                                                            .black12,
+                                                                        spreadRadius:
+                                                                            2,
+                                                                        blurRadius:
+                                                                            15,
+                                                                        offset: Offset(
+                                                                            1,
+                                                                            5), // changes position of shadow
+                                                                      ),
+                                                                    ],
+                                                                    color: Color(
+                                                                        0xBEE0E0E0)),
+                                                            child: Padding(
                                                               padding:
                                                                   const EdgeInsets
-                                                                      .all(1),
+                                                                      .all(1.0),
                                                               child: Center(
                                                                 child: Text(
-                                                                  "Poster Color",
+                                                                  "Color Blocks On/Off",
                                                                   style: TextStyle(
-                                                                      fontFamily: 'Schyler',
-                                                                      shadows: [
-                                                                        Shadow(
-                                                                          blurRadius:
-                                                                              10.0, // shadow blur
-                                                                          color:
-                                                                              Colors.black26, // shadow color
-                                                                          offset: Offset(
-                                                                              2.0,
-                                                                              2.0), // how much shadow will be shown
-                                                                        ),
-                                                                      ],
-                                                                      color: Colors.white,
-                                                                      fontSize: 14),
+                                                                      fontFamily:
+                                                                          'Schyler',
+                                                                      fontSize:
+                                                                          10),
                                                                   // Handles long text
                                                                   softWrap:
                                                                       true,
@@ -4865,1528 +8750,1685 @@ class _SpotState extends State<Spot> {
                                                                 ),
                                                               ),
                                                             ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () async {
-                                                      try {
-                                                        // Capture the screenshot
-                                                        final image =
-                                                            await screenshotController
-                                                                .capture();
-
-                                                        if (image != null) {
-                                                          // Convert to base64 and create a downloadable link
-                                                          final base64Image =
-                                                              base64Encode(
-                                                                  image);
-                                                          final anchor =
-                                                              AnchorElement(
-                                                                  href:
-                                                                      'data:application/octet-stream;base64,$base64Image')
-                                                                ..download =
-                                                                    "SpotifyPoster.png" // Name of the downloaded file
-                                                                ..target =
-                                                                    'blank';
-
-                                                          // Append the anchor to the document and simulate a click
-                                                          document.body!
-                                                              .append(anchor);
-                                                          anchor.click();
-                                                          anchor
-                                                              .remove(); // Clean up after the click
-                                                        }
-                                                      } catch (e) {
-                                                        print(
-                                                            "Error capturing or downloading the image: $e");
-                                                      }
-                                                    },
-                                                    child: Container(
-                                                      width: 120,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                            width:
-                                                                hoverstatus ==
-                                                                        false
-                                                                    ? 1.3
-                                                                    : 1.9,
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                          boxShadow: const [
-                                                            BoxShadow(
-                                                              color: Colors
-                                                                  .black12,
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
-                                                            ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBEE0E0E0)),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(10.0),
-                                                        child: Center(
-                                                          child: Row(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .spaceBetween,
-                                                            children: [
-                                                              SizedBox(
-                                                                width: 2,
-                                                              ),
-                                                              Text(
-                                                                "Save Poster",
-                                                                style: TextStyle(
-                                                                    fontFamily:
-                                                                        'Schyler',
-                                                                    fontSize:
-                                                                        13),
-                                                                // Handles long text
-                                                                softWrap: true,
-
-                                                                // Allows wrapping
-                                                              ),
-                                                              SizedBox(
-                                                                width: 2,
-                                                              ),
-                                                              Icon(
-                                                                Icons.save_alt,
-                                                                color: Colors
-                                                                    .black,
-                                                                size: 13.0,
-                                                              ),
-                                                            ],
                                                           ),
                                                         ),
                                                       ),
-                                                    ),
+                                                      // SizedBox(
+                                                      //   height: 100,
+                                                      // ),
+                                                      // Center(
+                                                      //   child: Text(
+                                                      //     "Spotify Authorization Code: " +
+                                                      //         authtoken,
+                                                      //     style: TextStyle(
+                                                      //         fontFamily: 'Schyler',
+                                                      //         fontSize: 5,
+                                                      //         color: Colors.black38),
+                                                      //     // Handles long text
+                                                      //     softWrap: true,
+                                                      //
+                                                      //     // Allows wrapping
+                                                      //   ),
+                                                      // ),
+                                                    ],
                                                   ),
-                                                  Visibility(
-                                                    visible: classicTemp,
-                                                    child: Column(
-                                                      children: [
-                                                        Container(
-                                                          width: 140,
-                                                          height: 40,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 1.3,
-                                                                  ),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              30),
-                                                                  boxShadow: const [
-                                                                    BoxShadow(
-                                                                      color: Colors
-                                                                          .black12,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                  color: Color(
-                                                                      0xBEF3F3F3)),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (albumsizeused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'album_title_size_changed',
-                                                                      );
-                                                                    }
-                                                                    setState(
-                                                                        () {
-                                                                      albumsizeused =
-                                                                          true;
-                                                                    });
-                                                                    print(textheight
-                                                                            .toString() +
-                                                                        ": textheight");
-                                                                    setState(
-                                                                        () {
-                                                                      albumsize = (albumsize -
-                                                                              15)
-                                                                          .clamp(
-                                                                              20,
-                                                                              400);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "-",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (albumsizeused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'album_title_size_changed',
-                                                                      );
-                                                                    }
-                                                                    setState(
-                                                                        () {
-                                                                      albumsizeused =
-                                                                          true;
-                                                                    });
-                                                                    print(textheight
-                                                                            .toString() +
-                                                                        ": textheight");
-                                                                    setState(
-                                                                        () {
-                                                                      albumsize = (albumsize +
-                                                                              15)
-                                                                          .clamp(
-                                                                              20,
-                                                                              500);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "+",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        SizedBox(
-                                                          height: 5,
-                                                        ),
-                                                        Text(
-                                                          "Album Title Size",
-                                                          style: TextStyle(
-                                                              fontFamily:
-                                                                  'Schyler',
-                                                              fontSize: 10),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: classicTemp,
-                                                    child: Column(
-                                                      children: [
-                                                        Container(
-                                                          width: 140,
-                                                          height: 40,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 1.3,
-                                                                  ),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              30),
-                                                                  boxShadow: const [
-                                                                    BoxShadow(
-                                                                      color: Colors
-                                                                          .black12,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                  color: Color(
-                                                                      0xBEF3F3F3)),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (textheightused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'text_height_changed',
-                                                                      );
-                                                                    }
-
-                                                                    setState(
-                                                                        () {
-                                                                      textheightused =
-                                                                          true;
-                                                                    });
-                                                                    print(textheight
-                                                                            .toString() +
-                                                                        ": textheight");
-                                                                    setState(
-                                                                        () {
-                                                                      textheight = (textheight -
-                                                                              5)
-                                                                          .clamp(
-                                                                              0,
-                                                                              3000);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "-",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                              // Expanded(
-                                                              //   flex: 5,
-                                                              //   child: SliderTheme(
-                                                              //     data:
-                                                              //         SliderThemeData(
-                                                              //       overlayColor: Colors
-                                                              //           .transparent,
-                                                              //       thumbColor:
-                                                              //           Colors.grey,
-                                                              //       activeTrackColor:
-                                                              //           Colors
-                                                              //               .black,
-                                                              //       inactiveTrackColor:
-                                                              //           Colors
-                                                              //               .black12,
-                                                              //     ),
-                                                              //     child: Slider(
-                                                              //       value:
-                                                              //           textheight,
-                                                              //       min: 10,
-                                                              //       max: 30,
-                                                              //       divisions: 400,
-                                                              //       onChanged:
-                                                              //           (double
-                                                              //               value) {
-                                                              //         setState(() {
-                                                              //           textheight =
-                                                              //               value;
-                                                              //         });
-                                                              //       },
-                                                              //     ),
-                                                              //   ),
-                                                              // ),
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (textheightused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'text_height_changed',
-                                                                      );
-                                                                    }
-                                                                    setState(
-                                                                        () {
-                                                                      textheightused =
-                                                                          true;
-                                                                    });
-                                                                    print(textheight
-                                                                            .toString() +
-                                                                        ": textheight");
-                                                                    setState(
-                                                                        () {
-                                                                      textheight = (textheight +
-                                                                              5)
-                                                                          .clamp(
-                                                                              0,
-                                                                              3000);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "+",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        SizedBox(
-                                                          height: 5,
-                                                        ),
-                                                        Text(
-                                                          "Song Height",
-                                                          style: TextStyle(
-                                                              fontFamily:
-                                                                  'Schyler',
-                                                              fontSize: 10),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: newTemp,
-                                                    child: Column(
-                                                      children: [
-                                                        Container(
-                                                          width: 140,
-                                                          height: 40,
-                                                          decoration:
-                                                          BoxDecoration(
-                                                              border: Border
-                                                                  .all(
-                                                                width: 1.3,
-                                                              ),
-                                                              borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                  30),
-                                                              boxShadow: const [
-                                                                BoxShadow(
-                                                                  color: Colors
-                                                                      .black12,
-                                                                  spreadRadius:
-                                                                  2,
-                                                                  blurRadius:
-                                                                  15,
-                                                                  offset: Offset(
-                                                                      1,
-                                                                      5), // changes position of shadow
-                                                                ),
-                                                              ],
-                                                              color: Color(
-                                                                  0xBEF3F3F3)),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                  child:
-                                                                  Padding(
-                                                                    padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                    child: InkWell(
-                                                                      onTap:
-                                                                          () async {
-                                                                        if (textheightused ==
-                                                                            false) {
-                                                                          FirebaseAnalytics
-                                                                              .instance
-                                                                              .logEvent(
-                                                                            name:
-                                                                            'text_height_changed',
-                                                                          );
-                                                                        }
-
-                                                                        setState(
-                                                                                () {
-                                                                              textheightused =
-                                                                              true;
-                                                                            });
-                                                                        print(textheight
-                                                                            .toString() +
-                                                                            ": textheight");
-                                                                        setState(
-                                                                                () {
-                                                                              Newtextheight = (Newtextheight -
-                                                                                  3)
-                                                                                  .clamp(
-                                                                                  0,
-                                                                                  3000);
-                                                                              ;
-                                                                            });
-                                                                      },
-                                                                      child:
-                                                                      Container(
-                                                                        height: 30,
-                                                                        child:
-                                                                        Center(
-                                                                          child:
-                                                                          Text(
-                                                                            "-",
-                                                                            style: TextStyle(
-                                                                                fontFamily:
-                                                                                'Schyler',
-                                                                                fontSize:
-                                                                                20),
-                                                                          ),
-                                                                        ),
-                                                                        decoration: BoxDecoration(
-                                                                            border: Border.all(
-                                                                              width: hoverstatus == false
-                                                                                  ? 1.3
-                                                                                  : 1.9,
-                                                                            ),
-                                                                            borderRadius: BorderRadius.circular(130),
-                                                                            boxShadow: const [
-                                                                              BoxShadow(
-                                                                                color:
-                                                                                Colors.black12,
-                                                                                spreadRadius:
-                                                                                2,
-                                                                                blurRadius:
-                                                                                15,
-                                                                                offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                              ),
-                                                                            ],
-                                                                            color: Color(0xBEB4B4B4)),
-                                                                      ),
-                                                                    ),
-                                                                  )),
-                                                              // Expanded(
-                                                              //   flex: 5,
-                                                              //   child: SliderTheme(
-                                                              //     data:
-                                                              //         SliderThemeData(
-                                                              //       overlayColor: Colors
-                                                              //           .transparent,
-                                                              //       thumbColor:
-                                                              //           Colors.grey,
-                                                              //       activeTrackColor:
-                                                              //           Colors
-                                                              //               .black,
-                                                              //       inactiveTrackColor:
-                                                              //           Colors
-                                                              //               .black12,
-                                                              //     ),
-                                                              //     child: Slider(
-                                                              //       value:
-                                                              //           textheight,
-                                                              //       min: 10,
-                                                              //       max: 30,
-                                                              //       divisions: 400,
-                                                              //       onChanged:
-                                                              //           (double
-                                                              //               value) {
-                                                              //         setState(() {
-                                                              //           textheight =
-                                                              //               value;
-                                                              //         });
-                                                              //       },
-                                                              //     ),
-                                                              //   ),
-                                                              // ),
-                                                              Expanded(
-                                                                  child:
-                                                                  Padding(
-                                                                    padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                    child: InkWell(
-                                                                      onTap:
-                                                                          () async {
-                                                                        if (textheightused ==
-                                                                            false) {
-                                                                          FirebaseAnalytics
-                                                                              .instance
-                                                                              .logEvent(
-                                                                            name:
-                                                                            'text_height_changed',
-                                                                          );
-                                                                        }
-                                                                        setState(
-                                                                                () {
-                                                                              textheightused =
-                                                                              true;
-                                                                            });
-                                                                        print(Newtextheight
-                                                                            .toString() +
-                                                                            ": textheight");
-                                                                        setState(
-                                                                                () {
-                                                                                  Newtextheight = (Newtextheight +
-                                                                                  3)
-                                                                                  .clamp(
-                                                                                  0,
-                                                                                  3000);
-                                                                              ;
-                                                                            });
-                                                                      },
-                                                                      child:
-                                                                      Container(
-                                                                        height: 30,
-                                                                        child:
-                                                                        Center(
-                                                                          child:
-                                                                          Text(
-                                                                            "+",
-                                                                            style: TextStyle(
-                                                                                fontFamily:
-                                                                                'Schyler',
-                                                                                fontSize:
-                                                                                20),
-                                                                          ),
-                                                                        ),
-                                                                        decoration: BoxDecoration(
-                                                                            border: Border.all(
-                                                                              width: hoverstatus == false
-                                                                                  ? 1.3
-                                                                                  : 1.9,
-                                                                            ),
-                                                                            borderRadius: BorderRadius.circular(130),
-                                                                            boxShadow: const [
-                                                                              BoxShadow(
-                                                                                color:
-                                                                                Colors.black12,
-                                                                                spreadRadius:
-                                                                                2,
-                                                                                blurRadius:
-                                                                                15,
-                                                                                offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                              ),
-                                                                            ],
-                                                                            color: Color(0xBEB4B4B4)),
-                                                                      ),
-                                                                    ),
-                                                                  )),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        SizedBox(
-                                                          height: 5,
-                                                        ),
-                                                        Text(
-                                                          "Song Height",
-                                                          style: TextStyle(
-                                                              fontFamily:
-                                                              'Schyler',
-                                                              fontSize: 10),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: newTemp,
-                                                    child: Column(
-                                                      children: [
-                                                        Container(
-                                                          width: 140,
-                                                          height: 40,
-                                                          decoration:
-                                                          BoxDecoration(
-                                                              border: Border
-                                                                  .all(
-                                                                width: 1.3,
-                                                              ),
-                                                              borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                  30),
-                                                              boxShadow: const [
-                                                                BoxShadow(
-                                                                  color: Colors
-                                                                      .black12,
-                                                                  spreadRadius:
-                                                                  2,
-                                                                  blurRadius:
-                                                                  15,
-                                                                  offset: Offset(
-                                                                      1,
-                                                                      5), // changes position of shadow
-                                                                ),
-                                                              ],
-                                                              color: Color(
-                                                                  0xBEF3F3F3)),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                  child:
-                                                                  Padding(
-                                                                    padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                    child: InkWell(
-                                                                      onTap:
-                                                                          () async {
-                                                                        if (textheightused ==
-                                                                            false) {
-                                                                          FirebaseAnalytics
-                                                                              .instance
-                                                                              .logEvent(
-                                                                            name:
-                                                                            'text_height_changed',
-                                                                          );
-                                                                        }
-
-                                                                        setState(
-                                                                                () {
-                                                                              textheightused =
-                                                                              true;
-                                                                            });
-                                                                        print(textheight
-                                                                            .toString() +
-                                                                            ": textheight");
-                                                                        setState(
-                                                                                () {
-                                                                              posterrows = (posterrows -
-                                                                                  1)
-                                                                                  .clamp(
-                                                                                  1,
-                                                                                  4);
-                                                                              ;
-                                                                            });
-                                                                      },
-                                                                      child:
-                                                                      Container(
-                                                                        height: 30,
-                                                                        child:
-                                                                        Center(
-                                                                          child:
-                                                                          Text(
-                                                                            "-",
-                                                                            style: TextStyle(
-                                                                                fontFamily:
-                                                                                'Schyler',
-                                                                                fontSize:
-                                                                                20),
-                                                                          ),
-                                                                        ),
-                                                                        decoration: BoxDecoration(
-                                                                            border: Border.all(
-                                                                              width: hoverstatus == false
-                                                                                  ? 1.3
-                                                                                  : 1.9,
-                                                                            ),
-                                                                            borderRadius: BorderRadius.circular(130),
-                                                                            boxShadow: const [
-                                                                              BoxShadow(
-                                                                                color:
-                                                                                Colors.black12,
-                                                                                spreadRadius:
-                                                                                2,
-                                                                                blurRadius:
-                                                                                15,
-                                                                                offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                              ),
-                                                                            ],
-                                                                            color: Color(0xBEB4B4B4)),
-                                                                      ),
-                                                                    ),
-                                                                  )),
-                                                              // Expanded(
-                                                              //   flex: 5,
-                                                              //   child: SliderTheme(
-                                                              //     data:
-                                                              //         SliderThemeData(
-                                                              //       overlayColor: Colors
-                                                              //           .transparent,
-                                                              //       thumbColor:
-                                                              //           Colors.grey,
-                                                              //       activeTrackColor:
-                                                              //           Colors
-                                                              //               .black,
-                                                              //       inactiveTrackColor:
-                                                              //           Colors
-                                                              //               .black12,
-                                                              //     ),
-                                                              //     child: Slider(
-                                                              //       value:
-                                                              //           textheight,
-                                                              //       min: 10,
-                                                              //       max: 30,
-                                                              //       divisions: 400,
-                                                              //       onChanged:
-                                                              //           (double
-                                                              //               value) {
-                                                              //         setState(() {
-                                                              //           textheight =
-                                                              //               value;
-                                                              //         });
-                                                              //       },
-                                                              //     ),
-                                                              //   ),
-                                                              // ),
-                                                              Expanded(
-                                                                  child:
-                                                                  Padding(
-                                                                    padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                    child: InkWell(
-                                                                      onTap:
-                                                                          () async {
-                                                                        if (textheightused ==
-                                                                            false) {
-                                                                          FirebaseAnalytics
-                                                                              .instance
-                                                                              .logEvent(
-                                                                            name:
-                                                                            'text_height_changed',
-                                                                          );
-                                                                        }
-                                                                        setState(
-                                                                                () {
-                                                                              textheightused =
-                                                                              true;
-                                                                            });
-                                                                        print(Newtextheight
-                                                                            .toString() +
-                                                                            ": textheight");
-                                                                        setState(
-                                                                                () {
-                                                                                  posterrows = (posterrows +
-                                                                                  1)
-                                                                                  .clamp(
-                                                                                  1,
-                                                                                  4);
-                                                                              ;
-                                                                            });
-                                                                      },
-                                                                      child:
-                                                                      Container(
-                                                                        height: 30,
-                                                                        child:
-                                                                        Center(
-                                                                          child:
-                                                                          Text(
-                                                                            "+",
-                                                                            style: TextStyle(
-                                                                                fontFamily:
-                                                                                'Schyler',
-                                                                                fontSize:
-                                                                                20),
-                                                                          ),
-                                                                        ),
-                                                                        decoration: BoxDecoration(
-                                                                            border: Border.all(
-                                                                              width: hoverstatus == false
-                                                                                  ? 1.3
-                                                                                  : 1.9,
-                                                                            ),
-                                                                            borderRadius: BorderRadius.circular(130),
-                                                                            boxShadow: const [
-                                                                              BoxShadow(
-                                                                                color:
-                                                                                Colors.black12,
-                                                                                spreadRadius:
-                                                                                2,
-                                                                                blurRadius:
-                                                                                15,
-                                                                                offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                              ),
-                                                                            ],
-                                                                            color: Color(0xBEB4B4B4)),
-                                                                      ),
-                                                                    ),
-                                                                  )),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        SizedBox(
-                                                          height: 5,
-                                                        ),
-                                                        Text(
-                                                          "Tracklist Rows",
-                                                          style: TextStyle(
-                                                              fontFamily:
-                                                              'Schyler',
-                                                              fontSize: 10),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: classicTemp,
-                                                    child: Column(
-                                                      children: [
-                                                        Container(
-                                                          width: 140,
-                                                          height: 40,
-                                                          decoration:
-                                                              BoxDecoration(
-                                                                  border: Border
-                                                                      .all(
-                                                                    width: 1.3,
-                                                                  ),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              30),
-                                                                  boxShadow: const [
-                                                                    BoxShadow(
-                                                                      color: Colors
-                                                                          .black12,
-                                                                      spreadRadius:
-                                                                          2,
-                                                                      blurRadius:
-                                                                          15,
-                                                                      offset: Offset(
-                                                                          1,
-                                                                          5), // changes position of shadow
-                                                                    ),
-                                                                  ],
-                                                                  color: Color(
-                                                                      0xBEF3F3F3)),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (textwidthused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'text_width_changed',
-                                                                      );
-                                                                    }
-                                                                    setState(
-                                                                        () {
-                                                                      textwidthused =
-                                                                          true;
-                                                                    });
-                                                                    print(textheight
-                                                                            .toString() +
-                                                                        ": textheight");
-                                                                    setState(
-                                                                        () {
-                                                                      textwidth = (textwidth -
-                                                                              30)
-                                                                          .clamp(
-                                                                              70,
-                                                                              1250);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "-",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                              // SliderTheme(
-                                                              //   data: SliderThemeData(
-                                                              //     overlayColor: Colors
-                                                              //         .transparent,
-                                                              //     thumbColor:
-                                                              //         Colors.grey,
-                                                              //     activeTrackColor:
-                                                              //         Colors.black,
-                                                              //     inactiveTrackColor:
-                                                              //         Colors.black12,
-                                                              //   ),
-                                                              //   child: Slider(
-                                                              //     value: textwidth,
-                                                              //     min: 100,
-                                                              //     max: 250,
-                                                              //     divisions: 400,
-                                                              //     onChanged:
-                                                              //         (double value) {
-                                                              //       setState(() {
-                                                              //         textwidth = value;
-                                                              //       });
-                                                              //     },
-                                                              //   ),
-                                                              // ),
-                                                              Expanded(
-                                                                  child:
-                                                                      Padding(
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .all(
-                                                                        3.0),
-                                                                child: InkWell(
-                                                                  onTap:
-                                                                      () async {
-                                                                    if (textwidthused ==
-                                                                        false) {
-                                                                      FirebaseAnalytics
-                                                                          .instance
-                                                                          .logEvent(
-                                                                        name:
-                                                                            'text_width_changed',
-                                                                      );
-                                                                    }
-                                                                    setState(
-                                                                        () {
-                                                                      textwidthused =
-                                                                          true;
-                                                                    });
-                                                                    print(textwidth
-                                                                            .toString() +
-                                                                        ": textwidth");
-                                                                    setState(
-                                                                        () {
-                                                                      textwidth = (textwidth +
-                                                                              30)
-                                                                          .clamp(
-                                                                              70,
-                                                                              13000);
-                                                                      ;
-                                                                    });
-                                                                  },
-                                                                  child:
-                                                                      Container(
-                                                                    height: 30,
-                                                                    child:
-                                                                        Center(
-                                                                      child:
-                                                                          Text(
-                                                                        "+",
-                                                                        style: TextStyle(
-                                                                            fontFamily:
-                                                                                'Schyler',
-                                                                            fontSize:
-                                                                                20),
-                                                                      ),
-                                                                    ),
-                                                                    decoration: BoxDecoration(
-                                                                        border: Border.all(
-                                                                          width: hoverstatus == false
-                                                                              ? 1.3
-                                                                              : 1.9,
-                                                                        ),
-                                                                        borderRadius: BorderRadius.circular(130),
-                                                                        boxShadow: const [
-                                                                          BoxShadow(
-                                                                            color:
-                                                                                Colors.black12,
-                                                                            spreadRadius:
-                                                                                2,
-                                                                            blurRadius:
-                                                                                15,
-                                                                            offset:
-                                                                                Offset(1, 5), // changes position of shadow
-                                                                          ),
-                                                                        ],
-                                                                        color: Color(0xBEB4B4B4)),
-                                                                  ),
-                                                                ),
-                                                              )),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        SizedBox(
-                                                          height: 5,
-                                                        ),
-                                                        Text(
-                                                          "Song Width",
-                                                          style: TextStyle(
-                                                              fontFamily:
-                                                                  'Schyler',
-                                                              fontSize: 10),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-
-                                                  // InkWell(
-                                                  //   onTap: () async {
-                                                  //     setState(() {
-                                                  //       visibile2 = true;
-                                                  //     });
-                                                  //   },
-                                                  //   child: Container(
-                                                  //     width: 40,
-                                                  //     height: 40,
-                                                  //     decoration: BoxDecoration(
-                                                  //         border: Border.all(
-                                                  //           width: hoverstatus ==
-                                                  //                   false
-                                                  //               ? 1.3
-                                                  //               : 1.9,
-                                                  //         ),
-                                                  //         borderRadius:
-                                                  //             BorderRadius
-                                                  //                 .circular(30),
-                                                  //         boxShadow: const [
-                                                  //           BoxShadow(
-                                                  //             color:
-                                                  //                 Colors.black12,
-                                                  //             spreadRadius: 2,
-                                                  //             blurRadius: 15,
-                                                  //             offset: Offset(1,
-                                                  //                 5), // changes position of shadow
-                                                  //           ),
-                                                  //         ],
-                                                  //         color:
-                                                  //             Color(0xBEE0E0E0)),
-                                                  //     child: Center(
-                                                  //         child: IconButton(
-                                                  //       onPressed:
-                                                  //           _launchtiktokUrl,
-                                                  //       icon: FaIcon(
-                                                  //           FontAwesomeIcons
-                                                  //               .tiktok),
-                                                  //       iconSize: 20,
-                                                  //       color: Colors.black,
-                                                  //     )),
-                                                  //   ),
-                                                  // ),
-                                                  // InkWell(
-                                                  //   onTap: () async {
-                                                  //     setState(() {
-                                                  //       visibile2 = true;
-                                                  //     });
-                                                  //   },
-                                                  //   child: Container(
-                                                  //     width: 40,
-                                                  //     height: 40,
-                                                  //     decoration: BoxDecoration(
-                                                  //         border: Border.all(
-                                                  //           width: hoverstatus ==
-                                                  //                   false
-                                                  //               ? 1.3
-                                                  //               : 1.9,
-                                                  //         ),
-                                                  //         borderRadius:
-                                                  //             BorderRadius
-                                                  //                 .circular(30),
-                                                  //         boxShadow: const [
-                                                  //           BoxShadow(
-                                                  //             color:
-                                                  //                 Colors.black12,
-                                                  //             spreadRadius: 2,
-                                                  //             blurRadius: 15,
-                                                  //             offset: Offset(1,
-                                                  //                 5), // changes position of shadow
-                                                  //           ),
-                                                  //         ],
-                                                  //         color:
-                                                  //             Color(0xBEE0E0E0)),
-                                                  //     child: Center(
-                                                  //         child: IconButton(
-                                                  //       onPressed:
-                                                  //           _launchinstagramUrl,
-                                                  //       icon: FaIcon(
-                                                  //           FontAwesomeIcons
-                                                  //               .instagram),
-                                                  //       iconSize: 20,
-                                                  //       color: Colors.black,
-                                                  //     )),
-                                                  //   ),
-                                                  // ),
-                                                  InkWell(
-                                                    onTap: () async {
-                                                      setState(() {
-                                                        if (textShadow ==
-                                                            true) {
-                                                          textShadow = false;
-                                                        } else {
-                                                          textShadow = true;
-                                                        }
-                                                      });
-                                                    },
-                                                    child: Container(
-                                                      width: 120,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                            width:
-                                                                hoverstatus ==
-                                                                        false
-                                                                    ? 1.3
-                                                                    : 1.9,
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                          boxShadow: const [
-                                                            BoxShadow(
-                                                              color: Colors
-                                                                  .black12,
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
-                                                            ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBEE0E0E0)),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(1.0),
-                                                        child: Center(
-                                                          child: Text(
-                                                            "Shadow On/Off",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'Schyler',
-                                                                fontSize: 10),
-                                                            // Handles long text
-                                                            softWrap: true,
-
-                                                            // Allows wrapping
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  InkWell(
-                                                    onTap: () async {
-                                                      setState(() {
-                                                        if (coverborder ==
-                                                            true) {
-                                                          coverborder = false;
-                                                        } else {
-                                                          coverborder = true;
-                                                        }
-                                                      });
-                                                    },
-                                                    child: Container(
-                                                      width: 120,
-                                                      height: 40,
-                                                      decoration: BoxDecoration(
-                                                          border: Border.all(
-                                                            width:
-                                                                hoverstatus ==
-                                                                        false
-                                                                    ? 1.3
-                                                                    : 1.9,
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(30),
-                                                          boxShadow: const [
-                                                            BoxShadow(
-                                                              color: Colors
-                                                                  .black12,
-                                                              spreadRadius: 2,
-                                                              blurRadius: 15,
-                                                              offset: Offset(1,
-                                                                  5), // changes position of shadow
-                                                            ),
-                                                          ],
-                                                          color: Color(
-                                                              0xBEE0E0E0)),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .all(1.0),
-                                                        child: Center(
-                                                          child: Text(
-                                                            "Cover Border On/Off",
-                                                            style: TextStyle(
-                                                                fontFamily:
-                                                                    'Schyler',
-                                                                fontSize: 10),
-                                                            // Handles long text
-                                                            softWrap: true,
-
-                                                            // Allows wrapping
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Visibility(
-                                                    visible: classicTemp,
-                                                    child: InkWell(
-                                                      onTap: () async {
-                                                        setState(() {
-                                                          if (showsquare ==
-                                                              true) {
-                                                            showsquare = false;
-                                                          } else {
-                                                            showsquare = true;
-                                                          }
-                                                        });
-                                                      },
-                                                      child: Container(
-                                                        width: 120,
-                                                        height: 40,
-                                                        decoration:
-                                                            BoxDecoration(
-                                                                border:
-                                                                    Border.all(
-                                                                  width: hoverstatus ==
-                                                                          false
-                                                                      ? 1.3
-                                                                      : 1.9,
-                                                                ),
-                                                                borderRadius:
-                                                                    BorderRadius
-                                                                        .circular(
-                                                                            30),
-                                                                boxShadow: const [
-                                                                  BoxShadow(
-                                                                    color: Colors
-                                                                        .black12,
-                                                                    spreadRadius:
-                                                                        2,
-                                                                    blurRadius:
-                                                                        15,
-                                                                    offset: Offset(
-                                                                        1,
-                                                                        5), // changes position of shadow
-                                                                  ),
-                                                                ],
-                                                                color: Color(
-                                                                    0xBEE0E0E0)),
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(1.0),
-                                                          child: Center(
-                                                            child: Text(
-                                                              "Color Blocks On/Off",
-                                                              style: TextStyle(
-                                                                  fontFamily:
-                                                                      'Schyler',
-                                                                  fontSize: 10),
-                                                              // Handles long text
-                                                              softWrap: true,
-
-                                                              // Allows wrapping
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  // SizedBox(
-                                                  //   height: 100,
-                                                  // ),
-                                                  // Center(
-                                                  //   child: Text(
-                                                  //     "Spotify Authorization Code: " +
-                                                  //         authtoken,
-                                                  //     style: TextStyle(
-                                                  //         fontFamily: 'Schyler',
-                                                  //         fontSize: 5,
-                                                  //         color: Colors.black38),
-                                                  //     // Handles long text
-                                                  //     softWrap: true,
-                                                  //
-                                                  //     // Allows wrapping
-                                                  //   ),
-                                                  // ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
+                                ),
+                              "Perspective" => Column(
+                                  children: [
+                                    SizedBox(
+                                      height: 7,
+                                    ),
+                                    Container(
+                                      // width: double.infinity,
+
+                                      // color: Colors.black,
+                                      child: Column(
+                                        children: [
+                                          Column(
+                                            children: [
+                                              Container(
+                                                width: 500,
+
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                      width: 1.3,
+                                                    ),
+                                                    borderRadius:
+                                                    BorderRadius
+                                                        .circular(20),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors
+                                                            .black12,
+                                                        spreadRadius: 2,
+                                                        blurRadius: 15,
+                                                        offset: Offset(1,
+                                                            5), // changes position of shadow
+                                                      ),
+                                                    ],
+                                                    color: Color(
+                                                        0xBEF3F3F3)),
+                                                child: Column(
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                            child:
+                                                            Padding(
+                                                              padding:
+                                                              const EdgeInsets
+                                                                  .all(
+                                                                  3.0),
+                                                              child: InkWell(
+                                                                onTap:
+                                                                    () async {
+
+                                                                  setState(
+                                                                          () {
+                                                                        textheightused =
+                                                                        true;
+                                                                      });
+                                                                  print(textheight
+                                                                      .toString() +
+                                                                      ": textheight");
+                                                                  setState(
+                                                                          () {
+                                                                        imageScale = 0.6;
+                                                                        scale = 0.4;
+                                                                        imageY = imageY - 80;
+                                                                        offsetY = offsetY - 50;
+                                                                      });
+                                                                },
+                                                                child:
+                                                                Container(
+                                                                  height: 30,
+                                                                  child:
+                                                                  Center(
+                                                                    child:
+                                                                    Text(
+                                                                      "Fully Visible View",
+                                                                      style: TextStyle(
+                                                                          fontFamily: 'Schyler', fontSize: 14),
+                                                                      // Handles long text
+                                                                      softWrap: true,
+
+                                                                      // Allows wrapping
+                                                                    ),
+                                                                  ),
+                                                                  decoration: BoxDecoration(
+                                                                      border: Border.all(
+                                                                        width: hoverstatus == false
+                                                                            ? 1.3
+                                                                            : 1.9,
+                                                                      ),
+                                                                      borderRadius: BorderRadius.circular(130),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                          Colors.black12,
+                                                                          spreadRadius:
+                                                                          2,
+                                                                          blurRadius:
+                                                                          15,
+                                                                          offset:
+                                                                          Offset(1, 5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(0xBEB4B4B4)),
+                                                                ),
+                                                              ),
+                                                            )),
+                                                        // Expanded(
+                                                        //   flex: 5,
+                                                        //   child: SliderTheme(
+                                                        //     data:
+                                                        //         SliderThemeData(
+                                                        //       overlayColor: Colors
+                                                        //           .transparent,
+                                                        //       thumbColor:
+                                                        //           Colors.grey,
+                                                        //       activeTrackColor:
+                                                        //           Colors
+                                                        //               .black,
+                                                        //       inactiveTrackColor:
+                                                        //           Colors
+                                                        //               .black12,
+                                                        //     ),
+                                                        //     child: Slider(
+                                                        //       value:
+                                                        //           textheight,
+                                                        //       min: 10,
+                                                        //       max: 30,
+                                                        //       divisions: 400,
+                                                        //       onChanged:
+                                                        //           (double
+                                                        //               value) {
+                                                        //         setState(() {
+                                                        //           textheight =
+                                                        //               value;
+                                                        //         });
+                                                        //       },
+                                                        //     ),
+                                                        //   ),
+                                                        // ),
+                                                        Expanded(
+                                                            child:
+                                                            Padding(
+                                                              padding:
+                                                              const EdgeInsets
+                                                                  .all(
+                                                                  3.0),
+                                                              child: InkWell(
+                                                                onTap:
+                                                                    () async {
+                                                                  // if (textheightused ==
+                                                                  //     false) {
+                                                                  //   FirebaseAnalytics
+                                                                  //       .instance
+                                                                  //       .logEvent(
+                                                                  //     name:
+                                                                  //         'text_height_changed',
+                                                                  //   );
+                                                                  // }
+                                                                  // setState(
+                                                                  //     () {
+                                                                  //   textheightused =
+                                                                  //       true;
+                                                                  // });
+                                                                  print(scale
+                                                                      .toString() +
+                                                                      ": scale");
+                                                                  setState(
+                                                                          () {
+                                                                        imageScale = (imageScale +
+                                                                            0.1)
+                                                                            .clamp(
+                                                                            0,
+                                                                            3000);
+                                                                        ;
+                                                                      });
+                                                                },
+                                                                child:
+                                                                Container(
+                                                                  height: 30,
+                                                                  child:
+                                                                  Center(
+                                                                    child:
+                                                                    Center(
+                                                                      child:
+                                                                      Text(
+                                                                        "Full Screen View",
+                                                                        style: TextStyle(
+                                                                            fontFamily: 'Schyler', fontSize: 14),
+                                                                        // Handles long text
+                                                                        softWrap: true,
+
+                                                                        // Allows wrapping
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  decoration: BoxDecoration(
+                                                                      border: Border.all(
+                                                                        width: hoverstatus == false
+                                                                            ? 1.3
+                                                                            : 1.9,
+                                                                      ),
+                                                                      borderRadius: BorderRadius.circular(130),
+                                                                      boxShadow: const [
+                                                                        BoxShadow(
+                                                                          color:
+                                                                          Colors.black12,
+                                                                          spreadRadius:
+                                                                          2,
+                                                                          blurRadius:
+                                                                          15,
+                                                                          offset:
+                                                                          Offset(1, 5), // changes position of shadow
+                                                                        ),
+                                                                      ],
+                                                                      color: Color(0xBEB4B4B4)),
+                                                                ),
+                                                              ),
+                                                            )),
+                                                      ],
+                                                    ),
+
+                                                  ],
+                                                ),
+                                              ),
+                                              //cardib
+                                            ],
+                                          ),
+                                          Wrap(
+                                              runSpacing: 8.0,
+                                              spacing: MediaQuery.of(context)
+                                                  .size
+                                                  .width /
+                                                  80,
+
+                                            children: [
+                                              Padding(
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: Column(
+                                                  children: [
+                                                    Column(
+                                                      children: [
+                                                        Container(
+                                                          width: 140,
+                                                          decoration: BoxDecoration(
+                                                              border: Border.all(
+                                                                width: 1.3,
+                                                              ),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(20),
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color: Colors
+                                                                      .black12,
+                                                                  spreadRadius: 2,
+                                                                  blurRadius: 15,
+                                                                  offset: Offset(1,
+                                                                      5), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                              color: Color(
+                                                                  0xBEF3F3F3)),
+                                                          child: Column(
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(() {
+                                                                          offsetX = (offsetX - 10).clamp(-3000, 3000);
+                                                                        });
+                                                                        print(textheight
+                                                                                .toString() +
+                                                                            ": textheight");
+
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Icon(
+                                                                            Icons
+                                                                                .keyboard_arrow_left, // ⬇ Clean Material-style arrow icon
+                                                                            size:
+                                                                                20,
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(() {
+                                                                          offsetX = (offsetX + 10).clamp(-3000, 3000);
+                                                                        });
+                                                                        print(textheight
+                                                                                .toString() +
+                                                                            ": textheight");
+
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Center(
+                                                                            child:
+                                                                                Icon(
+                                                                              Icons
+                                                                                  .keyboard_arrow_right, // ⬇ Clean Material-style arrow icon
+                                                                              size:
+                                                                                  20,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(() {
+                                                                          offsetY = (offsetY - 10).clamp(-3000, 3000);
+                                                                        });
+
+                                                                        print(textheight
+                                                                                .toString() +
+                                                                            ": textheight");
+
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Icon(
+                                                                            Icons
+                                                                                .keyboard_arrow_up, // ⬇ Clean Material-style arrow icon
+                                                                            size:
+                                                                                20,
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+                                                                        setState(() {
+                                                                          offsetY = (offsetY + 10).clamp(-3000, 3000);
+                                                                        });
+
+                                                                        print(textheight
+                                                                                .toString() +
+                                                                            ": textheight");
+
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Icon(
+                                                                            Icons
+                                                                                .keyboard_arrow_down, // ⬇ Clean Material-style arrow icon
+                                                                            size:
+                                                                                20,
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          "Move Poster",
+                                                          style: TextStyle(
+                                                              fontFamily: 'Schyler',
+                                                              fontSize: 10),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    SizedBox(height: 10,),
+                                                    Column(
+                                                      children: [
+                                                        Container(
+                                                          width: 140,
+                                                          decoration: BoxDecoration(
+                                                              border: Border.all(
+                                                                width: 1.3,
+                                                              ),
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(20),
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color: Colors
+                                                                      .black12,
+                                                                  spreadRadius: 2,
+                                                                  blurRadius: 15,
+                                                                  offset: Offset(1,
+                                                                      5), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                              color: Color(
+                                                                  0xBEF3F3F3)),
+                                                          child: Column(
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        if (textheightused ==
+                                                                            false) {
+                                                                          FirebaseAnalytics
+                                                                              .instance
+                                                                              .logEvent(
+                                                                            name:
+                                                                                'text_height_changed',
+                                                                          );
+                                                                        }
+
+                                                                        setState(
+                                                                            () {
+                                                                          textheightused =
+                                                                              true;
+                                                                        });
+                                                                        print(textheight
+                                                                                .toString() +
+                                                                            ": textheight");
+                                                                        setState(
+                                                                                () {
+                                                                              scale = (scale -
+                                                                                  0.1)
+                                                                                  .clamp(
+                                                                                  0,
+                                                                                  3000);
+                                                                              ;
+                                                                            });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Icon(
+                                                                            Icons
+                                                                                .remove, // ⬇ Clean Material-style arrow icon
+                                                                            size:
+                                                                                20,
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                          Padding(
+                                                                    padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                    child: InkWell(
+                                                                      onTap:
+                                                                          () async {
+                                                                        // if (textheightused ==
+                                                                        //     false) {
+                                                                        //   FirebaseAnalytics
+                                                                        //       .instance
+                                                                        //       .logEvent(
+                                                                        //     name:
+                                                                        //         'text_height_changed',
+                                                                        //   );
+                                                                        // }
+                                                                        // setState(
+                                                                        //     () {
+                                                                        //   textheightused =
+                                                                        //       true;
+                                                                        // });
+                                                                        print(scale
+                                                                                .toString() +
+                                                                            ": scale");
+                                                                        setState(
+                                                                            () {
+                                                                          scale = (scale +
+                                                                                  0.1)
+                                                                              .clamp(
+                                                                                  0,
+                                                                                  3000);
+                                                                          ;
+                                                                        });
+                                                                      },
+                                                                      child:
+                                                                          Container(
+                                                                        height: 30,
+                                                                        child:
+                                                                            Center(
+                                                                          child:
+                                                                              Center(
+                                                                            child:
+                                                                                Icon(
+                                                                              Icons
+                                                                                  .add, // ⬇ Clean Material-style arrow icon
+                                                                              size:
+                                                                                  20,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                        decoration: BoxDecoration(
+                                                                            border: Border.all(
+                                                                              width: hoverstatus == false
+                                                                                  ? 1.3
+                                                                                  : 1.9,
+                                                                            ),
+                                                                            borderRadius: BorderRadius.circular(130),
+                                                                            boxShadow: const [
+                                                                              BoxShadow(
+                                                                                color:
+                                                                                    Colors.black12,
+                                                                                spreadRadius:
+                                                                                    2,
+                                                                                blurRadius:
+                                                                                    15,
+                                                                                offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                              ),
+                                                                            ],
+                                                                            color: Color(0xBEB4B4B4)),
+                                                                      ),
+                                                                    ),
+                                                                  )),
+                                                                ],
+                                                              ),
+
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          "Scale Poster",
+                                                          style: TextStyle(
+                                                              fontFamily: 'Schyler',
+                                                              fontSize: 10),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+
+                                              ),
+                                              Padding(
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: Column(
+                                                  children: [
+                                                    Column(
+                                                      children: [
+                                                        Container(
+                                                          width: 140,
+                                                          decoration: BoxDecoration(
+                                                              border: Border.all(
+                                                                width: 1.3,
+                                                              ),
+                                                              borderRadius:
+                                                              BorderRadius
+                                                                  .circular(20),
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color: Colors
+                                                                      .black12,
+                                                                  spreadRadius: 2,
+                                                                  blurRadius: 15,
+                                                                  offset: Offset(1,
+                                                                      5), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                              color: Color(
+                                                                  0xBEF3F3F3)),
+                                                          child: Column(
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+
+
+                                                                            setState(() {
+                                                                              imageX = (imageX - 10).clamp(-3000, 3000);
+                                                                            });
+                                                                            print(textheight
+                                                                                .toString() +
+                                                                                ": textheight");
+
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Icon(
+                                                                                Icons
+                                                                                    .keyboard_arrow_left, // ⬇ Clean Material-style arrow icon
+                                                                                size:
+                                                                                20,
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+                                                                            if (textheightused ==
+                                                                                false) {
+                                                                              FirebaseAnalytics
+                                                                                  .instance
+                                                                                  .logEvent(
+                                                                                name:
+                                                                                'text_height_changed',
+                                                                              );
+                                                                            }
+                                                                            setState(() {
+                                                                              imageX = (imageX + 10).clamp(-3000, 3000);
+                                                                            });
+                                                                            print(textheight
+                                                                                .toString() +
+                                                                                ": textheight");
+
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Center(
+                                                                                child:
+                                                                                Icon(
+                                                                                  Icons
+                                                                                      .keyboard_arrow_right, // ⬇ Clean Material-style arrow icon
+                                                                                  size:
+                                                                                  20,
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                ],
+                                                              ),
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+                                                                            if (textheightused ==
+                                                                                false) {
+                                                                              FirebaseAnalytics
+                                                                                  .instance
+                                                                                  .logEvent(
+                                                                                name:
+                                                                                'text_height_changed',
+                                                                              );
+                                                                            }
+
+                                                                            setState(() {
+                                                                              imageY = (imageY - 10).clamp(-3000, 3000);
+                                                                            });
+
+                                                                            print(textheight
+                                                                                .toString() +
+                                                                                ": textheight");
+
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Icon(
+                                                                                Icons
+                                                                                    .keyboard_arrow_up, // ⬇ Clean Material-style arrow icon
+                                                                                size:
+                                                                                20,
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+                                                                            if (textheightused ==
+                                                                                false) {
+                                                                              FirebaseAnalytics
+                                                                                  .instance
+                                                                                  .logEvent(
+                                                                                name:
+                                                                                'text_height_changed',
+                                                                              );
+                                                                            }
+                                                                            setState(() {
+                                                                              imageY = (imageY + 10).clamp(-3000, 3000);
+                                                                            });
+
+                                                                            print(textheight
+                                                                                .toString() +
+                                                                                ": textheight");
+
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Icon(
+                                                                                Icons
+                                                                                    .keyboard_arrow_down, // ⬇ Clean Material-style arrow icon
+                                                                                size:
+                                                                                20,
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                ],
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          "Move Room",
+                                                          style: TextStyle(
+                                                              fontFamily: 'Schyler',
+                                                              fontSize: 10),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    SizedBox(height: 10,),
+                                                    Column(
+                                                      children: [
+                                                        Container(
+                                                          width: 140,
+                                                          decoration: BoxDecoration(
+                                                              border: Border.all(
+                                                                width: 1.3,
+                                                              ),
+                                                              borderRadius:
+                                                              BorderRadius
+                                                                  .circular(20),
+                                                              boxShadow: const [
+                                                                BoxShadow(
+                                                                  color: Colors
+                                                                      .black12,
+                                                                  spreadRadius: 2,
+                                                                  blurRadius: 15,
+                                                                  offset: Offset(1,
+                                                                      5), // changes position of shadow
+                                                                ),
+                                                              ],
+                                                              color: Color(
+                                                                  0xBEF3F3F3)),
+                                                          child: Column(
+                                                            children: [
+                                                              Row(
+                                                                children: [
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+                                                                            if (textheightused ==
+                                                                                false) {
+                                                                              FirebaseAnalytics
+                                                                                  .instance
+                                                                                  .logEvent(
+                                                                                name:
+                                                                                'text_height_changed',
+                                                                              );
+                                                                            }
+
+                                                                            setState(
+                                                                                    () {
+                                                                                  textheightused =
+                                                                                  true;
+                                                                                });
+                                                                            print(textheight
+                                                                                .toString() +
+                                                                                ": textheight");
+                                                                            setState(
+                                                                                    () {
+                                                                                      imageScale = (imageScale -
+                                                                                      0.1)
+                                                                                      .clamp(
+                                                                                      0,
+                                                                                      3000);
+                                                                                  ;
+                                                                                });
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Icon(
+                                                                                Icons
+                                                                                    .remove, // ⬇ Clean Material-style arrow icon
+                                                                                size:
+                                                                                20,
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                  // Expanded(
+                                                                  //   flex: 5,
+                                                                  //   child: SliderTheme(
+                                                                  //     data:
+                                                                  //         SliderThemeData(
+                                                                  //       overlayColor: Colors
+                                                                  //           .transparent,
+                                                                  //       thumbColor:
+                                                                  //           Colors.grey,
+                                                                  //       activeTrackColor:
+                                                                  //           Colors
+                                                                  //               .black,
+                                                                  //       inactiveTrackColor:
+                                                                  //           Colors
+                                                                  //               .black12,
+                                                                  //     ),
+                                                                  //     child: Slider(
+                                                                  //       value:
+                                                                  //           textheight,
+                                                                  //       min: 10,
+                                                                  //       max: 30,
+                                                                  //       divisions: 400,
+                                                                  //       onChanged:
+                                                                  //           (double
+                                                                  //               value) {
+                                                                  //         setState(() {
+                                                                  //           textheight =
+                                                                  //               value;
+                                                                  //         });
+                                                                  //       },
+                                                                  //     ),
+                                                                  //   ),
+                                                                  // ),
+                                                                  Expanded(
+                                                                      child:
+                                                                      Padding(
+                                                                        padding:
+                                                                        const EdgeInsets
+                                                                            .all(
+                                                                            3.0),
+                                                                        child: InkWell(
+                                                                          onTap:
+                                                                              () async {
+                                                                            // if (textheightused ==
+                                                                            //     false) {
+                                                                            //   FirebaseAnalytics
+                                                                            //       .instance
+                                                                            //       .logEvent(
+                                                                            //     name:
+                                                                            //         'text_height_changed',
+                                                                            //   );
+                                                                            // }
+                                                                            // setState(
+                                                                            //     () {
+                                                                            //   textheightused =
+                                                                            //       true;
+                                                                            // });
+                                                                            print(scale
+                                                                                .toString() +
+                                                                                ": scale");
+                                                                            setState(
+                                                                                    () {
+                                                                                      imageScale = (imageScale +
+                                                                                      0.1)
+                                                                                      .clamp(
+                                                                                      0,
+                                                                                      3000);
+                                                                                  ;
+                                                                                });
+                                                                          },
+                                                                          child:
+                                                                          Container(
+                                                                            height: 30,
+                                                                            child:
+                                                                            Center(
+                                                                              child:
+                                                                              Center(
+                                                                                child:
+                                                                                Icon(
+                                                                                  Icons
+                                                                                      .add, // ⬇ Clean Material-style arrow icon
+                                                                                  size:
+                                                                                  20,
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                            decoration: BoxDecoration(
+                                                                                border: Border.all(
+                                                                                  width: hoverstatus == false
+                                                                                      ? 1.3
+                                                                                      : 1.9,
+                                                                                ),
+                                                                                borderRadius: BorderRadius.circular(130),
+                                                                                boxShadow: const [
+                                                                                  BoxShadow(
+                                                                                    color:
+                                                                                    Colors.black12,
+                                                                                    spreadRadius:
+                                                                                    2,
+                                                                                    blurRadius:
+                                                                                    15,
+                                                                                    offset:
+                                                                                    Offset(1, 5), // changes position of shadow
+                                                                                  ),
+                                                                                ],
+                                                                                color: Color(0xBEB4B4B4)),
+                                                                          ),
+                                                                        ),
+                                                                      )),
+                                                                ],
+                                                              ),
+
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        SizedBox(
+                                                          height: 5,
+                                                        ),
+                                                        Text(
+                                                          "Scale Room",
+                                                          style: TextStyle(
+                                                              fontFamily: 'Schyler',
+                                                              fontSize: 10),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+
+                                              ),
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() {
+                                                    _pickBackdropImage();
+                                                  });
+                                                },
+                                                child: Container(
+
+                                                  height: 110,
+                                                  width: 110,
+                                                  decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                          width: 2.0, color: Color(0xBE504C46)),
+                                                      borderRadius: BorderRadius.circular(30),
+                                                      boxShadow: const [
+                                                        BoxShadow(
+                                                          color: Colors.black12,
+                                                          spreadRadius: 2,
+                                                          blurRadius: 15,
+                                                          offset: Offset(1,
+                                                              5), // changes position of shadow
+                                                        ),
+                                                      ],
+                                                      color: Color(0xBEE3D8C1)),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.all(2.0),
+                                                    child: Center(
+                                                      child: Text(
+                                                        "Choose Room Image From Files ",
+                                                        style: TextStyle(
+                                                            fontFamily: 'Schyler',
+                                                            fontSize: 13),
+                                                        // Handles long text
+                                                        softWrap: true,
+
+                                                        // Allows wrapping
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                    // Text(
+                                    //   "Text Color",
+                                    //   style: TextStyle(
+                                    //       fontFamily: 'Schyler', fontSize: 14),
+                                    //   // Handles long text
+                                    //   softWrap: true,
+                                    //
+                                    //   // Allows wrapping
+                                    // ),
+                                    // Row(
+                                    //   children: [
+                                    //     Expanded(
+                                    //         child: Padding(
+                                    //       padding: const EdgeInsets.all(7.0),
+                                    //       child: InkWell(
+                                    //         onTap: () {
+                                    //           setState(() {
+                                    //             posterTextColor = Colors.black;
+                                    //           });
+                                    //         },
+                                    //         child: Container(
+                                    //           height: 35,
+                                    //           decoration: BoxDecoration(
+                                    //               color: Colors.black,
+                                    //               borderRadius:
+                                    //                   BorderRadius.circular(20),
+                                    //               boxShadow: const [
+                                    //                 BoxShadow(
+                                    //                   color: Colors.black12,
+                                    //                   spreadRadius: 2,
+                                    //                   blurRadius: 5,
+                                    //                   offset: Offset(1,
+                                    //                       1), // changes position of shadow
+                                    //                 )
+                                    //               ],
+                                    //               border: Border.all(
+                                    //                   width: 2.3,
+                                    //                   color: Colors.white)),
+                                    //         ),
+                                    //       ),
+                                    //     )),
+                                    //     Expanded(
+                                    //         child: Padding(
+                                    //       padding: const EdgeInsets.all(7.0),
+                                    //       child: InkWell(
+                                    //         onTap: () {
+                                    //           setState(() {
+                                    //             posterTextColor = Colors.white;
+                                    //           });
+                                    //         },
+                                    //         child: Container(
+                                    //           height: 35,
+                                    //           decoration: BoxDecoration(
+                                    //               color: Colors.white,
+                                    //               borderRadius:
+                                    //                   BorderRadius.circular(20),
+                                    //               boxShadow: const [
+                                    //                 BoxShadow(
+                                    //                   color: Colors.black12,
+                                    //                   spreadRadius: 2,
+                                    //                   blurRadius: 5,
+                                    //                   offset: Offset(1,
+                                    //                       1), // changes position of shadow
+                                    //                 )
+                                    //               ],
+                                    //               border: Border.all(
+                                    //                   width: 2.3,
+                                    //                   color: Colors.black)),
+                                    //         ),
+                                    //       ),
+                                    //     )),
+                                    //     Expanded(
+                                    //         child: Padding(
+                                    //       padding: const EdgeInsets.all(7.0),
+                                    //       child: InkWell(
+                                    //         onTap: () {
+                                    //           setState(() {
+                                    //             posterTextColor =
+                                    //                 Colors.white60;
+                                    //           });
+                                    //         },
+                                    //         child: Container(
+                                    //           height: 35,
+                                    //           decoration: BoxDecoration(
+                                    //               color: Colors.grey,
+                                    //               borderRadius:
+                                    //                   BorderRadius.circular(20),
+                                    //               boxShadow: const [
+                                    //                 BoxShadow(
+                                    //                   color: Colors.black12,
+                                    //                   spreadRadius: 2,
+                                    //                   blurRadius: 5,
+                                    //                   offset: Offset(1,
+                                    //                       1), // changes position of shadow
+                                    //                 )
+                                    //               ],
+                                    //               border: Border.all(
+                                    //                   width: 2.3,
+                                    //                   color: Colors.black)),
+                                    //         ),
+                                    //       ),
+                                    //     )),
+                                    //     // Expanded(
+                                    //     //     child: Padding(
+                                    //     //       padding: const EdgeInsets.all(7.0),
+                                    //     //       child: InkWell(
+                                    //     //         onTap: () {
+                                    //     //           showModalBottomSheet(
+                                    //     //             context: context,
+                                    //     //             builder: (context) => Container(
+                                    //     //               padding: const EdgeInsets.all(2),
+                                    //     //
+                                    //     //               child: Column(
+                                    //     //                 children: [
+                                    //     //                   Expanded(
+                                    //     //                     child: ColorPicker(
+                                    //     //                       pickerColor: pickerColor,
+                                    //     //                       onColorChanged: changeColor,
+                                    //     //                     ),
+                                    //     //                   ),
+                                    //     //                   const SizedBox(height: 16),
+                                    //     //                   ElevatedButton(
+                                    //     //                     child: const Text('Got it'),
+                                    //     //                     onPressed: () {
+                                    //     //                       setState(() => posterTextColor = pickerColor);
+                                    //     //                       Navigator.of(context).pop();
+                                    //     //                     },
+                                    //     //                   ),
+                                    //     //                 ],
+                                    //     //               ),
+                                    //     //             ),
+                                    //     //           );
+                                    //     //         },
+                                    //     //
+                                    //     //
+                                    //     //         child: Container(
+                                    //     //           height: 35,
+                                    //     //           decoration: BoxDecoration(
+                                    //     //               color: Colors.grey,
+                                    //     //               borderRadius:
+                                    //     //               BorderRadius.circular(20),
+                                    //     //               boxShadow: const [
+                                    //     //                 BoxShadow(
+                                    //     //                   color: Colors.black12,
+                                    //     //                   spreadRadius: 2,
+                                    //     //                   blurRadius: 5,
+                                    //     //                   offset: Offset(1,
+                                    //     //                       1), // changes position of shadow
+                                    //     //                 )
+                                    //     //               ],
+                                    //     //               border: Border.all(
+                                    //     //                   width: 2.3,
+                                    //     //                   color: Colors.black)),
+                                    //     //         ),
+                                    //     //       ),
+                                    //     //     )),
+                                    //   ],
+                                    // ),
+                                  ],
                                 ),
                               _ => SizedBox(),
                             })
